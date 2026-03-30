@@ -9,6 +9,7 @@
 #include "bs_mem_file.h"
 #include "bs_module.h"
 #include "bs_vcd.h"
+#include "bs_fst.h"
 #include "bs_range_tracker.h"
 
 // forward declaration
@@ -472,6 +473,17 @@ class MOD_RegFile : public Module
     return (num);
   }
   void dump_VCD(tVCDDumpType /* unused */,
+		MOD_RegFile<AT,DT>& /* unused */)
+
+  {
+    // Memory contents are not dumped
+  }
+  unsigned int dump_FST_defs(unsigned int num)
+  {
+    // Memory contents are not dumped
+    return (num);
+  }
+  void dump_FST(tVCDDumpType /* unused */,
 		MOD_RegFile<AT,DT>& /* unused */)
 
   {

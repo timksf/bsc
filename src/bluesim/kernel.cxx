@@ -9,6 +9,8 @@
 #include "mem_alloc.h"
 #include "kernel.h"
 #include "bs_module.h"
+#include "bs_fst.h"
+#include "fstapi.h"
 #include "plusargs.h"
 #include "version.h"
 #include "portability.h"
@@ -17,6 +19,7 @@
 /* forward declarations of some static helper functions */
 static void setup_state_dump_events(tSimStateHdl simHdl, bool initial);
 static void setup_vcd_events(tSimStateHdl simHdl);
+static void setup_fst_events(tSimStateHdl simHdl);
 static void setup_clock_edges(tSimStateHdl simHdl, tClock clk);
 
 /* mutex operations */
@@ -298,6 +301,10 @@ static tTime run_edge_schedule_event(tSimStateHdl simHdl, tEvent& ev)
   if (vcd_is_active(simHdl))
     setup_vcd_events(simHdl);
 
+  // if necessary, schedule the FST dumping event
+  if (fst_is_active(simHdl))
+    setup_fst_events(simHdl);
+
   // if necessary, setup to yield to the UI at the end of this timeslice
   if (need_to_yield || simHdl->force_halt)
   {
@@ -409,6 +416,79 @@ static tTime vcd_event(tSimStateHdl simHdl, tEvent& ev)
   return 0llu;
 }
 
+static tTime fst_event(tSimStateHdl simHdl, tEvent& ev)
+{
+  // if writing a new header, dump the hierarchy and id map
+  if (fst_write_header(simHdl))
+  {
+    fst_write_scope_start(simHdl, "main");
+    simHdl->model->dump_FST_defs();
+    fst_write_scope_end(simHdl);
+  }
+
+  fst_advance(simHdl, ev.data.flag);
+
+  tVCDDumpType dt = get_FST_dump_type(simHdl);
+  switch (dt)
+  {
+    case VCD_DUMP_XS:
+    {
+      fstWriterEmitDumpActive((simHdl->fst).fst_ctx, 0);
+      for (tClock clk = 0; clk < simHdl->clocks.size(); ++clk)
+        fst_write_x(simHdl, simHdl->clocks[clk].vcd_num, 1);
+      simHdl->model->dump_FST(dt);
+      break;
+    }
+    case VCD_DUMP_INITIAL:
+    {
+      for (tClock clk = 0; clk < simHdl->clocks.size(); ++clk)
+      {
+        if ( simHdl->clocks[clk].has_initial_value ||
+             (bk_clock_cycle_count(simHdl, clk) != 0llu) )
+          fst_write_val(simHdl, simHdl->clocks[clk].vcd_num,
+			bk_clock_val(simHdl, clk), 1);
+      }
+      simHdl->model->dump_FST(dt);
+      break;
+    }
+    case VCD_DUMP_CHECKPOINT:
+    {
+      for (tClock clk = 0; clk < simHdl->clocks.size(); ++clk)
+        fst_write_val(simHdl, simHdl->clocks[clk].vcd_num,
+		      bk_clock_val(simHdl, clk), 1);
+      simHdl->model->dump_FST(dt);
+      break;
+    }
+    case VCD_DUMP_CHANGES:
+    {
+      tTime now = bk_now(simHdl);
+      for (tClock clk = 0; clk < simHdl->clocks.size(); ++clk)
+      {
+        if ((simHdl->clocks[clk].posedge_at == now) ||
+	    (simHdl->clocks[clk].negedge_at == now))
+          fst_write_val(simHdl, simHdl->clocks[clk].vcd_num,
+			bk_clock_val(simHdl, clk), 1);
+      }
+      simHdl->model->dump_FST(dt);
+      break;
+    }
+    case VCD_DUMP_RESTART:
+    {
+      fstWriterEmitDumpActive((simHdl->fst).fst_ctx, 1);
+      for (tClock clk = 0; clk < simHdl->clocks.size(); ++clk)
+        fst_write_val(simHdl, simHdl->clocks[clk].vcd_num,
+		      bk_clock_val(simHdl, clk), 1);
+      simHdl->model->dump_FST(dt);
+      break;
+    }
+    default: break;
+  }
+
+  fst_check_file_size(simHdl);
+
+  return 0llu;
+}
+
 static tTime quit_event(tSimStateHdl simHdl, tEvent& /* unused */)
 {
   simHdl->queue->clear();
@@ -488,6 +568,11 @@ static bool isCycleDumpEvent(tSimStateHdl /* unused */, const tEvent& ev)
 static bool isVCDEvent(tSimStateHdl /* unused */, const tEvent& ev)
 {
   return (ev.fn == vcd_event);
+}
+
+static bool isFSTEvent(tSimStateHdl /* unused */, const tEvent& ev)
+{
+  return (ev.fn == fst_event);
 }
 
 static void add_dummy_schedule_events(tSimStateHdl simHdl)
@@ -608,6 +693,24 @@ void setup_vcd_events(tSimStateHdl simHdl)
   }
 }
 
+void setup_fst_events(tSimStateHdl simHdl)
+{
+  if ((simHdl == NULL) || (simHdl->queue == NULL))
+    return;
+
+  if (simHdl->queue->find(simHdl, isFSTEvent) == NULL)
+  {
+    // schedule the fst event
+    tEvent ev;
+    ev.at        = simHdl->sim_time;
+    ev.priority  = make_priority(PG_AFTER_LOGIC, PS_VCD);
+    ev.fn        = fst_event;
+    ev.data.flag = false;
+
+    simHdl->queue->schedule(ev);
+  }
+}
+
 /*
  * Kernel API routines
  */
@@ -688,6 +791,23 @@ tSimStateHdl bk_init(tModel model, tBool master)
   (simHdl->vcd).vcd_checkpoint = false;
   (simHdl->vcd).vcd_depth = 0;
 
+  (simHdl->fst).state = VCD_OFF;
+  (simHdl->fst).fst_filesize_limit = 0llu;
+  (simHdl->fst).go_xs = false;
+  (simHdl->fst).next_seq_num = 0;
+  (simHdl->fst).kept_seq_num = 0;
+  (simHdl->fst).is_backing_instance = false;
+
+  (simHdl->fst).min_pending = 0llu;
+  (simHdl->fst).last_time_written = 0llu;
+  (simHdl->fst).changes_now = false;
+
+  (simHdl->fst).fst_ctx = NULL;
+  (simHdl->fst).fst_enabled = false;
+  (simHdl->fst).fst_checkpoint = false;
+  (simHdl->fst).fst_depth = 0;
+  (simHdl->fst).fst_timescale = NULL;
+
   // initialize directly so bk_set_timescale doesn't try to free garbage
   simHdl->sim_timescale = 1;
   (simHdl->vcd).vcd_timescale = strdup("1 us");
@@ -711,6 +831,7 @@ tSimStateHdl bk_init(tModel model, tBool master)
   simHdl->top_symbol.value = bk_get_model_instance(simHdl);
   simHdl->last_state_dump_time = ~(simHdl->sim_time);
   vcd_keep_ids(simHdl);
+  fst_keep_ids(simHdl);
 
   /* setup simulation thread infrastructure */
   simHdl->force_halt = false;
@@ -764,6 +885,7 @@ void bk_shutdown(tSimStateHdl simHdl)
   simHdl->queue = NULL;
   clear_plusargs(simHdl);
   vcd_reset(simHdl);
+  fst_reset(simHdl);
   delete simHdl;
 }
 
@@ -1561,6 +1683,54 @@ void bk_VCD_combo_update(tSimStateHdl simHdl, tTime t)
   ev.at        = t;
   ev.priority  = make_priority(PG_BEFORE_LOGIC, PS_VCD);
   ev.fn        = vcd_event;
+  ev.data.flag = true;
+
+  simHdl->queue->schedule(ev);
+}
+
+/* Control dumping of FST */
+
+tBool bk_enable_FST_dumping(tSimStateHdl simHdl)
+{
+  if ((simHdl->fst).fst_enabled)
+    return 1;
+  else if (fst_set_state(simHdl, true))
+  {
+    add_dummy_schedule_events(simHdl);
+    return 1;
+  }
+  else
+    return 0;
+}
+
+void bk_disable_FST_dumping(tSimStateHdl simHdl)
+{
+  if (!(simHdl->fst).fst_enabled)
+    return;
+
+  if (simHdl->queue)
+    simHdl->queue->remove(simHdl, isFSTEvent);
+
+  remove_dummy_schedule_events(simHdl);
+  fst_set_state(simHdl, false);
+  fst_dump_xs(simHdl);
+}
+
+tBool bk_is_FST_dumping_enabled(tSimStateHdl simHdl)
+{
+  return (simHdl->fst).fst_enabled ? 1 : 0;
+}
+
+void bk_FST_combo_update(tSimStateHdl simHdl, tTime t)
+{
+  if (!(simHdl->fst).fst_enabled)
+    return;
+
+  // schedule a special "immediate" fst event
+  tEvent ev;
+  ev.at        = t;
+  ev.priority  = make_priority(PG_BEFORE_LOGIC, PS_VCD);
+  ev.fn        = fst_event;
   ev.data.flag = true;
 
   simHdl->queue->schedule(ev);

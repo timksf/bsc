@@ -4,6 +4,7 @@
 #include "bluesim_kernel_api.h"
 #include "bs_module.h"
 #include "bs_vcd.h"
+#include "bs_fst.h"
 #include "bs_reset.h"
 
 /* Notes on reset handling
@@ -144,6 +145,46 @@ class MOD_SyncReset: public Module
     backing.in_reset = in_reset;
     backing.count    = count;
   }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 2);
+    unsigned int n = fst_num;
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, bk_clock_vcd_num(sim_hdl, __clk_handle_0), "CLK", 1);
+    fst_write_def(sim_hdl, n++, "IN_RST", 1);
+    fst_write_def(sim_hdl, n++, "OUT_RST", 1);
+    fst_write_scope_end(sim_hdl);
+    return (n);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_SyncReset& backing)
+  {
+    unsigned int num = fst_num;
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+    }
+    else if (dt == VCD_DUMP_CHANGES)
+    {
+      if (in_reset != backing.in_reset)
+	fst_write_val(sim_hdl, num++, !in_reset, 1);
+      else
+	num++;
+      bool rst_out = in_reset || (count > 1);
+      bool backing_rst_out = backing.in_reset || (backing.count > 1);
+      if (rst_out != backing_rst_out)
+	fst_write_val(sim_hdl, num++, !rst_out, 1);
+      else
+	num++;
+    }
+    else
+    {
+      fst_write_val(sim_hdl, num++, !in_reset, 1);
+      fst_write_val(sim_hdl, num++, !(in_reset || (count > 1)), 1);
+    }
+    backing.in_reset = in_reset;
+    backing.count    = count;
+  }
 
  private:
   unsigned int reset_hold;
@@ -197,6 +238,15 @@ class MOD_SyncReset0: public Module
   {
     // no VCD output
   }
+  unsigned int dump_FST_defs(unsigned int num)
+  {
+    // no FST output
+    return num;
+  }
+  void dump_FST(tVCDDumpType /* dt */, MOD_SyncReset0& /* backing */)
+  {
+    // no FST output
+  }
 
  private:
   tResetFn     reset_fn;
@@ -246,6 +296,16 @@ class MOD_InitialReset: public Module
     return (vcd_num + 3);
   }
   void dump_VCD(tVCDDumpType dt, MOD_InitialReset& backing)
+  {
+  }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 3);
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_scope_end(sim_hdl);
+    return (fst_num + 3);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_InitialReset& backing)
   {
   }
 
@@ -355,6 +415,24 @@ class MOD_MakeReset: public Module
       backing.rst = rst;
     }
   }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 1);
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, fst_num, "rst", 1);
+    fst_write_scope_end(sim_hdl);
+    return (fst_num + 1);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_MakeReset& backing)
+  {
+    if (dt == VCD_DUMP_XS)
+      fst_write_x(sim_hdl, fst_num, 1);
+    else if ((dt != VCD_DUMP_CHANGES) || (backing.rst != rst))
+    {
+      fst_write_val(sim_hdl, fst_num, rst, 1);
+      backing.rst = rst;
+    }
+  }
 
  private:
   MOD_SyncReset sync;
@@ -456,6 +534,24 @@ class MOD_MakeReset0: public Module
     else if ((dt != VCD_DUMP_CHANGES) || (backing.rst != rst))
     {
       vcd_write_val(sim_hdl, vcd_num, rst, 1);
+      backing.rst = rst;
+    }
+  }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 1);
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, fst_num, "rst", 1);
+    fst_write_scope_end(sim_hdl);
+    return (fst_num + 1);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_MakeReset0& backing)
+  {
+    if (dt == VCD_DUMP_XS)
+      fst_write_x(sim_hdl, fst_num, 1);
+    else if ((dt != VCD_DUMP_CHANGES) || (backing.rst != rst))
+    {
+      fst_write_val(sim_hdl, fst_num, rst, 1);
       backing.rst = rst;
     }
   }
@@ -561,6 +657,15 @@ class MOD_ResetMux : public Module
   {
     // no VCD output
   }
+  unsigned int dump_FST_defs(unsigned int num) const
+  {
+    // no FST output
+    return (num);
+  }
+  void dump_FST(tVCDDumpType /* dt */, MOD_ResetMux& /* backing */)
+  {
+    // no FST output
+  }
 
  private:
   tResetFn     reset_fn;
@@ -632,6 +737,15 @@ class MOD_ResetEither : public Module
   {
     // no VCD output
   }
+  unsigned int dump_FST_defs(unsigned int num) const
+  {
+    // no FST output
+    return (num);
+  }
+  void dump_FST(tVCDDumpType /* dt */, MOD_ResetEither& /* backing */)
+  {
+    // no FST output
+  }
 
  private:
   tResetFn     reset_fn;
@@ -680,6 +794,15 @@ class MOD_ResetToBool : public Module
   void dump_VCD(tVCDDumpType /* dt */, MOD_ResetToBool& /* backing */)
   {
     // no VCD output
+  }
+  unsigned int dump_FST_defs(unsigned int num) const
+  {
+    // no FST output
+    return (num);
+  }
+  void dump_FST(tVCDDumpType /* dt */, MOD_ResetToBool& /* backing */)
+  {
+    // no FST output
   }
 
  private:

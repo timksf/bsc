@@ -13,3 +13,7 @@ build
 
 .vagrant/
 vagrant-out/
+*.vcd
+*.so
+*.sched
+*_out

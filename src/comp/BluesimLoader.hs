@@ -385,6 +385,7 @@ data BluesimModel =
        , sim_hdl                :: WordPtr
        , current_clock          :: BSClock
        , active_vcd_file        :: Maybe String
+       , active_fst_file        :: Maybe String
        , current_directory      :: [BSSymbol]
        , cleanup_handlers       :: [IO ()]
          -- configuration state
@@ -432,6 +433,9 @@ data BluesimModel =
        , bk_set_VCD_file        :: String -> IO BSStatus
        , bk_enable_VCD_dumping  :: IO Bool
        , bk_disable_VCD_dumping :: IO ()
+       , bk_set_FST_file        :: String -> IO BSStatus
+       , bk_enable_FST_dumping  :: IO Bool
+       , bk_disable_FST_dumping :: IO ()
        , bk_shutdown            :: IO ()
        }
 
@@ -490,6 +494,9 @@ loadBluesimModel fname top_name = do
   c_bk_set_VCD_file        <- dlsym dl "bk_set_VCD_file"
   c_bk_enable_VCD_dumping  <- dlsym dl "bk_enable_VCD_dumping"
   c_bk_disable_VCD_dumping <- dlsym dl "bk_disable_VCD_dumping"
+  c_bk_set_FST_file        <- dlsym dl "bk_set_FST_file"
+  c_bk_enable_FST_dumping  <- dlsym dl "bk_enable_FST_dumping"
+  c_bk_disable_FST_dumping <- dlsym dl "bk_disable_FST_dumping"
   c_bk_shutdown            <- dlsym dl "bk_shutdown"
   -- convert functions to Haskell types and build BluesimModel
   let new_model :: IO WordPtr
@@ -518,6 +525,10 @@ loadBluesimModel fname top_name = do
       set_vcd_fn :: WordPtr -> String -> IO BSStatus
       set_vcd_fn simHdl s =
           let fn = dl_ptr_str_ret_int c_bk_set_VCD_file
+          in withCString s (fromC . fn (toC simHdl))
+      set_fst_fn :: WordPtr -> String -> IO BSStatus
+      set_fst_fn simHdl s =
+          let fn = dl_ptr_str_ret_int c_bk_set_FST_file
           in withCString s (fromC . fn (toC simHdl))
       plusarg_fn :: WordPtr -> String -> IO ()
       plusarg_fn simHdl s =
@@ -574,6 +585,7 @@ loadBluesimModel fname top_name = do
                           , sim_hdl                = sim_hdl
                           , current_clock          = 0  -- default clock handle
                           , active_vcd_file        = Nothing
+                          , active_fst_file        = Nothing
                           , current_directory      = [top_symbol]
                           , cleanup_handlers       = []
                           , is_interactive         = False
@@ -619,6 +631,9 @@ loadBluesimModel fname top_name = do
                           , bk_set_VCD_file        = set_vcd_fn sim_hdl
                           , bk_enable_VCD_dumping  = (fromC $ dl_ptr_ret_uchar c_bk_enable_VCD_dumping) sim_hdl
                           , bk_disable_VCD_dumping = (fromC $ dl_ptr_ret_void c_bk_disable_VCD_dumping) sim_hdl
+                          , bk_set_FST_file        = set_fst_fn sim_hdl
+                          , bk_enable_FST_dumping  = (fromC $ dl_ptr_ret_uchar c_bk_enable_FST_dumping) sim_hdl
+                          , bk_disable_FST_dumping = (fromC $ dl_ptr_ret_void c_bk_disable_FST_dumping) sim_hdl
                           , bk_shutdown            = (fromC $ dl_ptr_ret_void c_bk_shutdown) sim_hdl
                           })
 

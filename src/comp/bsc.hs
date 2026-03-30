@@ -1800,7 +1800,7 @@ cxxLink errh flags toplevel names creation_time = do
                      ["-o", soFile]
         -- show is used for quoting
         opts = map show $ linkFlags flags
-        files = map show compile_names ++ ["-lm"] ++ userlibs
+        files = map show compile_names ++ ["-lm", "-lz"] ++ userlibs
     cxxCompile errh flags (opts ++ switches) files
     when (not (cDebug flags)) $ cleanseSharedLib errh flags soFile
     unless (quiet flags) $ putStrLnF ("Simulation shared library created: " ++ soFile)

@@ -4,6 +4,7 @@
 #include "bluesim_kernel_api.h"
 #include "bs_module.h"
 #include "bs_vcd.h"
+#include "bs_fst.h"
 
 // This is a helper class we use manage race conditions at
 // clock domain crossings.  A SyncVar allows us to read a
@@ -151,6 +152,44 @@ class MOD_Sync2 : public Module
       }
     }
   }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 3);
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, fst_num,   "dSyncReg1", 1);
+    fst_write_def(sim_hdl, fst_num+1, "dSyncReg2", 1);
+    fst_write_def(sim_hdl, fst_num+2, "sSyncReg",  1);
+    fst_write_scope_end(sim_hdl);
+    return (fst_num + 3);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_Sync2& backing)
+  {
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, fst_num,   1);
+      fst_write_x(sim_hdl, fst_num+1, 1);
+      fst_write_x(sim_hdl, fst_num+2, 1);
+    }
+    else
+    {
+      if ((dt != VCD_DUMP_CHANGES) || (backing.dSyncReg1 != dSyncReg1))
+      {
+	fst_write_val(sim_hdl, fst_num, dSyncReg1, 1);
+	backing.dSyncReg1 = dSyncReg1;
+      }
+      if ((dt != VCD_DUMP_CHANGES) || (backing.dSyncReg2 != dSyncReg2))
+      {
+	fst_write_val(sim_hdl, fst_num+1, dSyncReg2, 1);
+	backing.dSyncReg2 = dSyncReg2;
+      }
+      if ((dt != VCD_DUMP_CHANGES) ||
+	  (backing.sSyncReg.read() != sSyncReg.read()))
+      {
+	fst_write_val(sim_hdl, fst_num+2, sSyncReg.read(),  1);
+	backing.sSyncReg = sSyncReg;
+      }
+    }
+  }
 
  private:
   tUInt8 dSyncReg1;
@@ -248,6 +287,44 @@ class MOD_Sync15 : public Module
       }
     }
   }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 3);
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, fst_num,   "dSyncReg1", 1);
+    fst_write_def(sim_hdl, fst_num+1, "dSyncReg2", 1);
+    fst_write_def(sim_hdl, fst_num+2, "sSyncReg",  1);
+    fst_write_scope_end(sim_hdl);
+    return (fst_num + 3);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_Sync15& backing)
+  {
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, fst_num,   1);
+      fst_write_x(sim_hdl, fst_num+1, 1);
+      fst_write_x(sim_hdl, fst_num+2, 1);
+    }
+    else
+    {
+      if ((dt != VCD_DUMP_CHANGES) || (backing.dSyncReg1 != dSyncReg1))
+      {
+	fst_write_val(sim_hdl, fst_num, dSyncReg1, 1);
+	backing.dSyncReg1 = dSyncReg1;
+      }
+      if ((dt != VCD_DUMP_CHANGES) || (backing.dSyncReg2 != dSyncReg2))
+      {
+	fst_write_val(sim_hdl, fst_num+1, dSyncReg2, 1);
+	backing.dSyncReg2 = dSyncReg2;
+      }
+      if ((dt != VCD_DUMP_CHANGES) ||
+	  (backing.sSyncReg.read() != sSyncReg.read()))
+      {
+	fst_write_val(sim_hdl, fst_num+2, sSyncReg.read(), 1);
+	backing.sSyncReg = sSyncReg;
+      }
+    }
+  }
 
  private:
   tUInt8 dSyncReg1;
@@ -331,6 +408,37 @@ class MOD_Sync1 : public Module
 	  (backing.sSyncReg.read() != sSyncReg.read()))
       {
 	vcd_write_val(sim_hdl, vcd_num+1, sSyncReg.read(), 1);
+	backing.sSyncReg = sSyncReg;
+      }
+    }
+  }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 2);
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, fst_num,   "dSyncReg1", 1);
+    fst_write_def(sim_hdl, fst_num+1, "sSyncReg",  1);
+    fst_write_scope_end(sim_hdl);
+    return (fst_num + 2);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_Sync1& backing)
+  {
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, fst_num,   1);
+      fst_write_x(sim_hdl, fst_num+1, 1);
+    }
+    else
+    {
+      if ((dt != VCD_DUMP_CHANGES) || (backing.dSyncReg1 != dSyncReg1))
+      {
+	fst_write_val(sim_hdl, fst_num, dSyncReg1, 1);
+	backing.dSyncReg1 = dSyncReg1;
+      }
+      if ((dt != VCD_DUMP_CHANGES) ||
+	  (backing.sSyncReg.read() != sSyncReg.read()))
+      {
+	fst_write_val(sim_hdl, fst_num+1, sSyncReg.read(), 1);
 	backing.sSyncReg = sSyncReg;
       }
     }
@@ -444,6 +552,51 @@ class MOD_SyncPulse : public Module
 	  (backing.sSyncReg.read() != sSyncReg.read()))
       {
 	vcd_write_val(sim_hdl, vcd_num+3, sSyncReg.read(),  1);
+	backing.sSyncReg = sSyncReg;
+      }
+    }
+  }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 4);
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, fst_num,   "dSyncReg1", 1);
+    fst_write_def(sim_hdl, fst_num+1, "dSyncReg2", 1);
+    fst_write_def(sim_hdl, fst_num+2, "dSyncPulse", 1);
+    fst_write_def(sim_hdl, fst_num+3, "sSyncReg",  1);
+    fst_write_scope_end(sim_hdl);
+    return (fst_num + 4);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_SyncPulse& backing)
+  {
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, fst_num,   1);
+      fst_write_x(sim_hdl, fst_num+1, 1);
+      fst_write_x(sim_hdl, fst_num+2, 1);
+      fst_write_x(sim_hdl, fst_num+3, 1);
+    }
+    else
+    {
+      if ((dt != VCD_DUMP_CHANGES) || (backing.dSyncReg1 != dSyncReg1))
+      {
+	fst_write_val(sim_hdl, fst_num, dSyncReg1, 1);
+	backing.dSyncReg1 = dSyncReg1;
+      }
+      if ((dt != VCD_DUMP_CHANGES) || (backing.dSyncReg2 != dSyncReg2))
+      {
+	fst_write_val(sim_hdl, fst_num+1, dSyncReg2, 1);
+	backing.dSyncReg2 = dSyncReg2;
+      }
+      if ((dt != VCD_DUMP_CHANGES) || (backing.dSyncPulse != dSyncPulse))
+      {
+	fst_write_val(sim_hdl, fst_num+2, dSyncPulse, 1);
+	backing.dSyncPulse = dSyncPulse;
+      }
+      if ((dt != VCD_DUMP_CHANGES) ||
+	  (backing.sSyncReg.read() != sSyncReg.read()))
+      {
+	fst_write_val(sim_hdl, fst_num+3, sSyncReg.read(),  1);
 	backing.sSyncReg = sSyncReg;
       }
     }
@@ -689,6 +842,112 @@ class MOD_SyncHandshake : public Module
     backing.sRDY = sRDY;
     backing.pulsing = pulsing;
   }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 12);
+    unsigned int n = fst_num;
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, n++, "dSyncReg1", 1);
+    fst_write_def(sim_hdl, n++, "dSyncReg2", 1);
+    fst_write_def(sim_hdl, n++, "dLastState", 1);
+    fst_write_def(sim_hdl, n++, "sToggleReg", 1);
+    fst_write_def(sim_hdl, n++, "sSyncReg1", 1);
+    fst_write_def(sim_hdl, n++, "sSyncReg2", 1);
+    fst_write_def(sim_hdl, n++, "sRDY", 1);
+    fst_set_clock(sim_hdl, n, __clk_handle_0);
+    fst_write_def(sim_hdl, n++, "sEN", 1);
+    fst_write_def(sim_hdl, bk_clock_vcd_num(sim_hdl, __clk_handle_0), "sCLK", 1);
+    fst_write_def(sim_hdl, bk_clock_vcd_num(sim_hdl, __clk_handle_1), "dCLK", 1);
+    fst_write_def(sim_hdl, n++, "sRST", 1);
+    fst_write_def(sim_hdl, n++, "dPulse", 1);
+    fst_write_scope_end(sim_hdl);
+    return (n);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_SyncHandshake& backing)
+  {
+    unsigned int num = fst_num;
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+    }
+    else if (dt == VCD_DUMP_CHANGES)
+    {
+      if (backing.dSyncReg1 != dSyncReg1)
+	fst_write_val(sim_hdl, num++, dSyncReg1, 1);
+      else
+	num++;
+      if (backing.dSyncReg2.probe() != dSyncReg2.probe())
+	fst_write_val(sim_hdl, num++, dSyncReg2.probe(), 1);
+      else
+	num++;
+      if (backing.dLastState.probe() != dLastState.probe())
+	fst_write_val(sim_hdl, num++, dLastState.probe(), 1);
+      else
+	num++;
+      if (backing.sToggleReg.probe() != sToggleReg.probe())
+	fst_write_val(sim_hdl, num++, sToggleReg.probe(), 1);
+      else
+	num++;
+      if (backing.sSyncReg1 != sSyncReg1)
+	fst_write_val(sim_hdl, num++, sSyncReg1, 1);
+      else
+	num++;
+      if (backing.sSyncReg2 != sSyncReg2)
+	fst_write_val(sim_hdl, num++, sSyncReg2, 1);
+      else
+	num++;
+      if (backing.sRDY != sRDY)
+	fst_write_val(sim_hdl, num++, sRDY, 1);
+      else
+	num++;
+      if (backing.did_send != did_send)
+      {
+	fst_write_val(sim_hdl, num++, did_send, 1);
+	backing.did_send = did_send;
+      }
+      else
+	num++;
+      if (backing.in_reset != in_reset)
+	fst_write_val(sim_hdl, num++, !in_reset, 1);
+      else
+	num++;
+      if (backing.pulsing != pulsing)
+	fst_write_val(sim_hdl, num++, pulsing, 1);
+      else
+	num++;
+    }
+    else
+    {
+      fst_write_val(sim_hdl, num++, dSyncReg1, 1);
+      fst_write_val(sim_hdl, num++, dSyncReg2.probe(), 1);
+      fst_write_val(sim_hdl, num++, dLastState.probe(), 1);
+      fst_write_val(sim_hdl, num++, sToggleReg.probe(), 1);
+      fst_write_val(sim_hdl, num++, sSyncReg1, 1);
+      fst_write_val(sim_hdl, num++, sSyncReg2, 1);
+      fst_write_val(sim_hdl, num++, sRDY, 1);
+      fst_write_val(sim_hdl, num++, did_send, 1);
+      backing.did_send = did_send;
+      fst_write_val(sim_hdl, num++, !in_reset, 1);
+      fst_write_val(sim_hdl, num++, pulsing, 1);
+    }
+    backing.dSyncReg1 = dSyncReg1;
+    backing.dSyncReg2 = dSyncReg2;
+    backing.dLastState = dLastState;
+    backing.sToggleReg = sToggleReg;
+    backing.sSyncReg1 = sSyncReg1;
+    backing.sSyncReg2 = sSyncReg2;
+    backing.sRDY = sRDY;
+    backing.pulsing = pulsing;
+  }
 
  private:
   tUInt8 dSyncReg1;
@@ -813,6 +1072,39 @@ class MOD_SyncReg : public Module
       }
     }
     sync.dump_VCD(dt, backing.sync);
+  }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 2);
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, fst_num,   "dD_OUT", bits);
+    fst_write_def(sim_hdl, fst_num+1, "sDataSyncIn", bits);
+    unsigned int n = sync.dump_FST_defs(fst_num + 2);
+    fst_write_scope_end(sim_hdl);
+    return (n);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_SyncReg<T>& backing)
+  {
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, fst_num,   bits);
+      fst_write_x(sim_hdl, fst_num+1, bits);
+    }
+    else
+    {
+      if ((dt != VCD_DUMP_CHANGES) || (backing.dD_OUT != dD_OUT))
+      {
+	fst_write_val(sim_hdl, fst_num, dD_OUT, bits);
+	backing.dD_OUT = dD_OUT;
+      }
+      if ((dt != VCD_DUMP_CHANGES) ||
+	  (backing.sDataSyncIn.read() != sDataSyncIn.read()))
+      {
+	fst_write_val(sim_hdl, fst_num+1, sDataSyncIn.read(), bits);
+	backing.sDataSyncIn = sDataSyncIn;
+      }
+    }
+    sync.dump_FST(dt, backing.sync);
   }
 
  private:
@@ -1334,6 +1626,182 @@ class MOD_SyncFIFO : public Module
     sClrSync.dump_VCD(dt, backing.sClrSync);
     dClrSync.dump_VCD(dt, backing.dClrSync);
   }
+  unsigned int dump_FST_defs(unsigned int num)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, depth + 13);
+    unsigned int n = fst_num;
+    char buf[16];
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, n++, "FULL_N", 1);
+    fst_write_def(sim_hdl, n++, "EMPTY_N", 1);
+    fst_write_def(sim_hdl, n++, "dEnqPtr", idx_bits+1);
+    fst_write_def(sim_hdl, n++, "dGDeqPtr", idx_bits+1);
+    fst_write_def(sim_hdl, n++, "dGDeqPtr1", idx_bits+1);
+    fst_write_def(sim_hdl, n++, "dSyncReg1", idx_bits+1);
+    fst_write_def(sim_hdl, n++, "sDeqPtr", idx_bits+1);
+    fst_write_def(sim_hdl, n++, "sGEnqPtr", idx_bits+1);
+    fst_write_def(sim_hdl, n++, "sGEnqPtr1", idx_bits+1);
+    fst_write_def(sim_hdl, n++, "sSyncReg1", idx_bits+1);
+    fst_write_def(sim_hdl, n++, "sCount", idx_bits);
+    fst_write_def(sim_hdl, n++, "dCount", idx_bits);
+    fst_write_def(sim_hdl, n++, "dDoutReg", width);
+    for (unsigned int i = 0; i < depth; ++i)
+    {
+      snprintf(buf, 16, "arr_%d", i);
+      fst_write_def(sim_hdl, n++, buf, width);
+    }
+    unsigned int n2 = sClrSync.dump_FST_defs(n);
+    unsigned int n3 = dClrSync.dump_FST_defs(n2);
+    fst_write_scope_end(sim_hdl);
+    return n3;
+  }
+  void dump_FST(tVCDDumpType dt, MOD_SyncFIFO<T,I>& backing)
+  {
+    unsigned int num = fst_num;
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, idx_bits+1);
+      fst_write_x(sim_hdl, num++, idx_bits+1);
+      fst_write_x(sim_hdl, num++, idx_bits+1);
+      fst_write_x(sim_hdl, num++, idx_bits+1);
+      fst_write_x(sim_hdl, num++, idx_bits+1);
+      fst_write_x(sim_hdl, num++, idx_bits+1);
+      fst_write_x(sim_hdl, num++, idx_bits+1);
+      fst_write_x(sim_hdl, num++, idx_bits+1);
+      fst_write_x(sim_hdl, num++, idx_bits);
+      fst_write_x(sim_hdl, num++, idx_bits);
+      fst_write_x(sim_hdl, num++, width);
+      for (unsigned int i = 0; i < depth; ++i)
+	fst_write_x(sim_hdl, num++, width);
+    }
+    else if (dt == VCD_DUMP_CHANGES)
+    {
+      if (not_full != backing.not_full)
+	fst_write_val(sim_hdl, num++, not_full, 1);
+      else
+	++num;
+      if (METH_RDY_first() != backing.METH_RDY_first())
+	fst_write_val(sim_hdl, num++, METH_RDY_first(), 1);
+      else
+	++num;
+      if (dst_hi != backing.dst_hi)
+	fst_write_val(sim_hdl, num++, dst_hi, idx_bits+1);
+      else
+	++num;
+      if (dst_lo.probe() != backing.dst_lo.read())
+        fst_write_val(sim_hdl, num++, dst_lo.probe(), idx_bits+1);
+      else
+	++num;
+      if (dst_lo_plus_1 != backing.dst_lo_plus_1)
+	fst_write_val(sim_hdl, num++, dst_lo_plus_1, idx_bits+1);
+      else
+	++num;
+      if (dSyncReg1 != backing.dSyncReg1)
+	fst_write_val(sim_hdl, num++, dSyncReg1, idx_bits+1);
+      else
+	++num;
+      if (src_lo != backing.src_lo)
+	fst_write_val(sim_hdl, num++, src_lo, idx_bits+1);
+      else
+	++num;
+      if (src_hi.probe() != backing.src_hi.read())
+        fst_write_val(sim_hdl, num++, src_hi.probe(), idx_bits+1);
+      else
+	++num;
+      if (src_hi_plus_1 != backing.src_hi_plus_1)
+	fst_write_val(sim_hdl, num++, src_hi_plus_1, idx_bits+1);
+      else
+	++num;
+      if (sSyncReg1 != backing.sSyncReg1)
+	fst_write_val(sim_hdl, num++, sSyncReg1, idx_bits+1);
+      else
+	++num;
+      if (sCountReg != backing.sCountReg)
+	fst_write_val(sim_hdl, num++, sCountReg, idx_bits);
+      else
+	++num;
+      if (dCountReg != backing.dCountReg)
+	fst_write_val(sim_hdl, num++, dCountReg, idx_bits);
+      else
+	++num;
+      if (METH_RDY_first() && !backing.METH_RDY_first())
+	fst_write_val(sim_hdl, num++, dDoutReg, width);
+      else if (!METH_RDY_first() && backing.METH_RDY_first())
+        fst_write_x(sim_hdl, num++, width);
+      else if (METH_RDY_first() && (dDoutReg != backing.dDoutReg))
+	fst_write_val(sim_hdl, num++, dDoutReg, width);
+      else
+	++num;
+      for (unsigned int i = 0; i < depth; ++i)
+      {
+	unsigned int idx = (dst_lo.probe() + i) % depth;
+	unsigned int b_idx = (backing.dst_lo.read() + i) % depth;
+	// handle value which has been added
+	if (occupied(idx) && !backing.occupied(b_idx))
+	  fst_write_val(sim_hdl, num++, data[idx], width);
+	// handle value which is removed
+	else if (!occupied(idx) && backing.occupied(b_idx))
+	  fst_write_x(sim_hdl, num++, width);
+	// handle value which is changed
+	else if (occupied(idx) && backing.occupied(b_idx) &&
+		 (data[idx] != backing.data[b_idx]))
+	  fst_write_val(sim_hdl, num++, data[idx], width);
+	// handle value which is unchanged
+	else
+	  ++num;
+      }
+    }
+    else
+    {
+      fst_write_val(sim_hdl, num++, METH_RDY_enq(), 1);
+      fst_write_val(sim_hdl, num++, METH_RDY_first(), 1);
+      fst_write_val(sim_hdl, num++, dst_hi, idx_bits+1);
+      fst_write_val(sim_hdl, num++, dst_lo.probe(), idx_bits+1);
+      fst_write_val(sim_hdl, num++, dst_lo_plus_1, idx_bits+1);
+      fst_write_val(sim_hdl, num++, dSyncReg1, idx_bits+1);
+      fst_write_val(sim_hdl, num++, src_lo, idx_bits+1);
+      fst_write_val(sim_hdl, num++, src_hi.probe(), idx_bits+1);
+      fst_write_val(sim_hdl, num++, src_hi_plus_1, idx_bits+1);
+      fst_write_val(sim_hdl, num++, sSyncReg1, idx_bits+1);
+      fst_write_val(sim_hdl, num++, sCountReg, idx_bits);
+      fst_write_val(sim_hdl, num++, dCountReg, idx_bits);
+      if (METH_RDY_first()) 
+        fst_write_val(sim_hdl, num++, dDoutReg, width);
+      else
+	  fst_write_x(sim_hdl, num++, width);
+      for (unsigned int i = 0; i < depth; ++i)
+      {
+	unsigned int idx = (dst_lo.read() + i) % depth;
+	if (occupied(idx))
+	  fst_write_val(sim_hdl, num++, data[idx], width);
+	else
+	  fst_write_x(sim_hdl, num++, width);
+      }
+    }
+
+    backing.src_lo = src_lo;
+    backing.src_hi = src_hi;
+    backing.dst_lo = dst_lo;
+    backing.dst_hi = dst_hi;
+    backing.src_hi_plus_1 = src_hi_plus_1;
+    backing.dst_lo_plus_1 = dst_lo_plus_1;
+    backing.sSyncReg1 = sSyncReg1;
+    backing.dSyncReg1 = dSyncReg1;
+    backing.sCountReg = sCountReg;
+    backing.dCountReg = dCountReg;
+    backing.not_empty = not_empty;
+    backing.not_full  = not_full;
+    backing.s_reset = s_reset;
+    backing.d_reset = d_reset;
+    backing.dDoutReg = dDoutReg;
+    for (unsigned int i = 0; i < depth; ++i)
+      backing.data[i] = data[i];
+
+    sClrSync.dump_FST(dt, backing.sClrSync);
+    dClrSync.dump_FST(dt, backing.dClrSync);
+  }
 
  private:
   const unsigned int width;
@@ -1434,6 +1902,17 @@ class MOD_DualPortRam : public Module
     return (num);
   }
   void dump_VCD(tVCDDumpType /* unused */,
+		MOD_DualPortRam<AT,DT>& /* unused */)
+
+  {
+    // Memory contents are not dumped
+  }
+  unsigned int dump_FST_defs(unsigned int num)
+  {
+    // Memory contents are not dumped
+    return (num);
+  }
+  void dump_FST(tVCDDumpType /* unused */,
 		MOD_DualPortRam<AT,DT>& /* unused */)
 
   {
@@ -1565,6 +2044,37 @@ class MOD_LatchCrossingReg : public Module
       if ((dt != VCD_DUMP_CHANGES) || (backing.sFlop != sFlop))
       {
 	vcd_write_val(sim_hdl, vcd_num+1, sFlop, bits);
+	backing.sFlop = sFlop;
+      }
+    }
+  }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    char buf[128];
+    fst_num = fst_reserve_ids(sim_hdl, 2);
+    snprintf(buf,128,"%s$L_OUT",inst_name);
+    fst_write_def(sim_hdl, fst_num,   buf, bits);
+    snprintf(buf,128,"%s$Q_OUT",inst_name);
+    fst_write_def(sim_hdl, fst_num+1, buf, bits);
+    return (fst_num + 2);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_LatchCrossingReg& backing)
+  {
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, fst_num,   bits);
+      fst_write_x(sim_hdl, fst_num+1, bits);
+    }
+    else
+    {
+      if ((dt != VCD_DUMP_CHANGES) || (backing.dLatch != dLatch))
+      {
+	fst_write_val(sim_hdl, fst_num, dLatch, bits);
+	backing.dLatch = dLatch;
+      }
+      if ((dt != VCD_DUMP_CHANGES) || (backing.sFlop != sFlop))
+      {
+	fst_write_val(sim_hdl, fst_num+1, sFlop, bits);
 	backing.sFlop = sFlop;
       }
     }

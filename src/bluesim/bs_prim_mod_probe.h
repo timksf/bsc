@@ -5,6 +5,7 @@
 #include "bluesim_probes.h"
 #include "bs_module.h"
 #include "bs_vcd.h"
+#include "bs_fst.h"
 
 // This is the definition of the Probe primitive.
 template<typename T>
@@ -58,6 +59,28 @@ class MOD_Probe : public Module
     else if ((dt != VCD_DUMP_CHANGES) || (backing.value != value))
     {
       vcd_write_val(sim_hdl, vcd_num, value, bits);
+      backing.value = value;
+    }
+  }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    char* buf = NULL;
+    int sz = asprintf(&buf, "%s$PROBE", inst_name);
+    if (sz < 0)
+      perror("dump_FST_defs: asprintf");
+    fst_num = fst_reserve_ids(sim_hdl, 1);
+    fst_set_clock(sim_hdl, fst_num, __clk_handle_0);
+    fst_write_def(sim_hdl, fst_num, buf, bits);
+    free(buf);
+    return (fst_num + 1);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_Probe<T>& backing)
+  {
+    if (dt == VCD_DUMP_XS)
+      fst_write_x(sim_hdl, fst_num, bits);
+    else if ((dt != VCD_DUMP_CHANGES) || (backing.value != value))
+    {
+      fst_write_val(sim_hdl, fst_num, value, bits);
       backing.value = value;
     }
   }
@@ -125,6 +148,13 @@ class MOD_ProbeWire : public Module
     return vcd_num;
   }
   void dump_VCD(tVCDDumpType dt, MOD_ProbeWire<T>& backing)
+  {
+  }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    return fst_num;
+  }
+  void dump_FST(tVCDDumpType dt, MOD_ProbeWire<T>& backing)
   {
   }
 

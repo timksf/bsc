@@ -6,6 +6,7 @@
 #include "bluesim_kernel_api.h"
 #include "bs_module.h"
 #include "bs_vcd.h"
+#include "bs_fst.h"
 
 // This is the definition of the Wire primitive for <= 64 bits
 template<typename T>
@@ -114,6 +115,42 @@ class MOD_Wire : public Module
       {
 	/* Pulse wires should be displayed as just the whas() value */
 	vcd_write_val(sim_hdl, vcd_num, written, 1);
+      }
+
+      backing.value = value;
+      backing.written = written;
+    }
+  }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 1);
+    if (shift_vcd)
+      fst_set_clock(sim_hdl, fst_num, __clk_handle_0);
+    if (bits > 0)
+      fst_write_def(sim_hdl, fst_num, inst_name, bits);
+    else
+      fst_write_def(sim_hdl, fst_num, inst_name, 1);  // pulse wire
+    return (fst_num + 1);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_Wire<T>& backing)
+  {
+    if (dt == VCD_DUMP_XS)
+      fst_write_x(sim_hdl, fst_num, bits);
+    else if ((dt != VCD_DUMP_CHANGES)     ||
+	     (written != backing.written) ||
+	     (written && backing.written && (value != backing.value)))
+    {
+      if (bits > 0)
+      {
+	if (written)
+	  fst_write_val(sim_hdl, fst_num, value, bits);
+	else
+	  fst_write_x(sim_hdl, fst_num, bits);
+      }
+      else
+      {
+	/* Pulse wires should be displayed as just the whas() value */
+	fst_write_val(sim_hdl, fst_num, written, 1);
       }
 
       backing.value = value;

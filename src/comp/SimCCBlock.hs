@@ -1543,6 +1543,23 @@ vcdDumpFnProto sb scope name with_levels =
 vcdFnProto :: SimCCBlock -> Maybe String -> CCFragment
 vcdFnProto sb scope = vcdDumpFnProto sb scope "dump_VCD" True
 
+fstHdrFnProto :: Maybe String -> CCFragment
+fstHdrFnProto scope =
+  let prefix = maybe "" (++ "::") scope
+  in function (unsigned . int) (mkVar (prefix ++ "dump_FST_defs"))
+                               [ unsigned . int $ (mkVar "levels") ]
+
+fstDumpFnProto :: SimCCBlock -> Maybe String -> String -> Bool -> CCFragment
+fstDumpFnProto sb scope name with_levels =
+  let prefix = maybe "" (++ "::") scope
+      args = [ (userType "tVCDDumpType") $ (mkVar "dt") ] ++
+             (if (with_levels) then [ unsigned . int $ (mkVar "levels") ] else []) ++
+             [ reference . (moduleType sb []) $ (mkVar "backing") ]
+  in function void (mkVar (prefix ++ name)) args
+
+fstFnProto :: SimCCBlock -> Maybe String -> CCFragment
+fstFnProto sb scope = fstDumpFnProto sb scope "dump_FST" True
+
 mkSubCall :: AId -> String -> [CCExpr] -> Maybe CCFragment -> CCFragment
 mkSubCall inst fn args lval =
   let rhs = ((aInstIdToC inst) `cDot` fn) `cCall` args
@@ -1565,6 +1582,21 @@ mkVCDDef clk_map (ty,aid,isPort) =
                     Nothing  -> []
       args = [var "sim_hdl"] ++ (mkVCDCallArgs VCDDef ty name def)
       write_def = [ stmt $ (var "vcd_write_def") `cCall` args ]
+
+  in set_lag ++ write_def
+
+mkFSTDef :: Map.Map (Bool, AId) ClockDomain -> (AType, AId, Bool) -> [CCFragment]
+mkFSTDef clk_map (ty,aid,isPort) =
+  let name      = getIdBaseString aid
+      def       = if isPort then (aPortIdToC aid) else (aDefIdToC aid)
+      aid'      = (isPort, aid)
+      dom       = M.lookup aid' clk_map
+      set_lag   = case dom of
+                    (Just d) -> [ stmt $ (var "fst_set_clock") `cCall`
+                                  [ var "sim_hdl", var "num",  var (mkClkDefName d) ] ]
+                    Nothing  -> []
+      args = [var "sim_hdl"] ++ (mkVCDCallArgs VCDDef ty name def)
+      write_def = [ stmt $ (var "fst_write_def") `cCall` args ]
 
   in set_lag ++ write_def
 
@@ -1672,6 +1704,21 @@ simCCBlockToClassDeclaration sb_map sb =
                      then [decl $ vcdDumpFnProto sb Nothing "vcd_submodules" True]
                      else [])
       vcd         = [comment "VCD dumping routines" (public (vcd_hdr:vcd_changes))]
+      fst_hdr     = decl $ fstHdrFnProto Nothing
+      fst_changes = [ decl $ fstFnProto sb Nothing ]
+                    ++
+                    (if has_members
+                     then [decl $ fstDumpFnProto sb Nothing "fst_defs" False]
+                     else [])
+                    ++
+                    (if has_prims
+                     then [decl $ fstDumpFnProto sb Nothing "fst_prims" False]
+                     else [])
+                    ++
+                    (if has_submodules
+                     then [decl $ fstDumpFnProto sb Nothing "fst_submodules" True]
+                     else [])
+      fst         = [comment "FST dumping routines" (public (fst_hdr:fst_changes))]
       class_decl  = c_class (pfxMod ++ (sb_name sb)) (Just "Module") $
                     concat [ clk_defs
                            , gate_defs
@@ -1692,6 +1739,7 @@ simCCBlockToClassDeclaration sb_map sb =
                            , set_clk_fns
                            , state_dump
                            , vcd
+                           , fst
                            ]
       comment_str = "Class declaration for the " ++ (sb_name sb) ++ " module"
   in comment comment_str (decl class_decl)
@@ -2087,6 +2135,163 @@ simCCBlockToClassDefinition sb_map sch_map sb =
                          else [ define vcd_submodules_proto vcd_submodules_body ])
          vcds = [vcd_dump_defs, vcd_dump] ++ vcd_dump_fns
 
+     -- --------------------
+     -- FST dumping routines
+
+     let fst_num_init = [ (mkVar "fst_num") `assign`
+                         ((var "fst_reserve_ids") `cCall`
+                                 [var "sim_hdl", mkUInt32 (toInteger num_ids)])
+                    , decl $ (unsigned . int) $
+                        (mkVar "num") `assign` (var "fst_num")
+                    ]
+         fst_clk_def_loop = [ for (decl $ (unsigned . int) $ (mkVar "clk") `assign` (mkUInt32 0))
+                              ((var "clk") `cLt` ((var "bk_num_clocks") `cCall` [var "sim_hdl"]))
+                              (stmt $ cPreInc (var "clk"))
+                              (stmt $ (var "fst_add_clock_def") `cCall` [ var "sim_hdl"
+                                                                        , var "this"
+                                                                        , (var "bk_clock_name") `cCall` [var "sim_hdl", var "clk"]
+                                                                        , (var "bk_clock_vcd_num") `cCall` [var "sim_hdl", var "clk"]
+                                                                        ])
+                        ]
+         fst_clk_aliases = [ stmt $ (var "fst_write_def") `cCall` [var "sim_hdl",num,name,sz]
+                       | (port, dom) <- sb_inputClocks sb
+                       , let clk = var (mkClkDefName dom)
+                       , let num = (var "bk_clock_vcd_num") `cCall` [var "sim_hdl", clk]
+                       , let name = mkStr (getIdString port)
+                       , let sz = mkUInt32 1
+                       ]
+         fst_prim_calls = [ mkSubCall inst "dump_FST_defs"
+                                       [var "num"]
+                                       (Just (mkVar "num"))
+                        | inst <- prims ]
+         fst_sub_calls = [ mkSubCall inst "dump_FST_defs"
+                                      [var "l"]
+                                      (Just (mkVar "num"))
+                        | inst <- sub_modules ]
+         fst_member_calls = concatMap (mkFSTDef clk_map) members
+         fst_port_calls   = concatMap (mkFSTDef clk_map) ports
+         fst_new_l = cTernary ((var "levels") `cEq` (mkUInt32 0))
+                          (mkUInt32 0)
+                          ((var "levels") `cSub` (mkUInt32 1))
+         fst_recurse =
+           [ decl $ (unsigned . int) $ (mkVar "l") `assign` fst_new_l ] ++
+           fst_sub_calls
+         fst_scope_start = [ stmt $ (var "fst_write_scope_start") `cCall` [var "sim_hdl", var "inst_name"] ]
+         fst_scope_end = [ stmt $ (var "fst_write_scope_end") `cCall` [var "sim_hdl"] ]
+         fst_dump_defs_body =
+           block (fst_scope_start ++
+                  fst_num_init ++
+                  fst_clk_def_loop ++
+                  fst_clk_aliases ++
+                  fst_member_calls ++
+                  fst_port_calls ++
+                  fst_prim_calls ++
+                  (if (null fst_sub_calls)
+                   then []
+                   else [ if_cond ((var "levels") `cNe` (mkUInt32 1))
+                                  (block fst_recurse)
+                                  Nothing
+                        ]) ++
+                  fst_scope_end ++
+                  [ ret (Just (var "num")) ]
+                  )
+         fst_dump_defs = define (fstHdrFnProto scope) fst_dump_defs_body
+
+         -- FST value dumping functions
+
+         fst_write ct (ty,aid,isPort) =
+           let name        = getIdBaseString aid
+               name_fn     = if isPort then port_name else def_name
+               def         = name_fn Nothing aid
+               backing_def = name_fn (Just (var "backing")) aid
+           in [ stmt $ (var "fst_write_val") `cCall`
+                         ([var "sim_hdl"] ++ (mkVCDCallArgs ct ty name def))
+              , (stmt backing_def) `assign` def
+              ]
+         fst_write_x (ty,aid,isPort) =
+           let name_fn = if isPort then port_name else def_name
+               def     = name_fn Nothing aid
+           in  stmt $ (var "fst_write_x") `cCall`
+                        ([var "sim_hdl"] ++ (mkVCDCallArgs VCDX ty "" def))
+         fst_write_changed target@(ty,aid,isPort) =
+           let name_fn     = if isPort then port_name else def_name
+               def         = name_fn Nothing aid
+               backing_def = name_fn (Just (var "backing")) aid
+           in [ if_cond (backing_def `cNe` def)
+                        (block (fst_write VCDChange  target))
+                        Nothing
+              , stmt $ cPreInc (var "num")
+              ]
+         fst_member_calls_xs = map fst_write_x members
+         fst_member_calls_changed = concatMap fst_write_changed members
+         fst_member_calls_all = concatMap (fst_write VCDVal) members
+         fst_port_calls_xs = map fst_write_x ports
+         fst_port_calls_changed = concatMap fst_write_changed ports
+         fst_port_calls_all = concatMap (fst_write VCDVal) ports
+         fst_defs_proto = fstDumpFnProto sb scope "fst_defs" False
+         fst_defs_body =
+           block [ decl $ (unsigned . int) $
+                                (mkVar "num") `assign` (var "fst_num")
+                 , if_cond ((var "dt") `cEq` (var "VCD_DUMP_XS"))
+                           (block (fst_member_calls_xs ++ fst_port_calls_xs))
+                           (Just (if_cond ((var "dt") `cEq` (var "VCD_DUMP_CHANGES"))
+                                          (block (fst_member_calls_changed ++ fst_port_calls_changed))
+                                          (Just (block (fst_member_calls_all ++ fst_port_calls_all)))))
+                  ]
+         fst_prims_proto = fstDumpFnProto sb scope "fst_prims" False
+         fst_prims_body =
+           block [ mkSubCall inst
+                             "dump_FST"
+                             [ var "dt"
+                             , (var "backing") `cDot` (aUnqualInstIdToString inst)
+                             ]
+                             Nothing
+                 | inst <- prims
+                 ]
+         fst_submodules_proto = fstDumpFnProto sb scope "fst_submodules" True
+         fst_submodules_body =
+           block [ mkSubCall inst
+                             "dump_FST"
+                             [ var "dt"
+                             , var "levels"
+                             , (var "backing") `cDot` (aUnqualInstIdToString inst)
+                             ]
+                             Nothing
+                 | inst <- sub_modules
+                 ]
+         fst_dump_body =
+           block ((if (null members)
+                   then []
+                   else [ stmt $ (var "fst_defs") `cCall` [var "dt", var "backing"] ])
+                  ++
+                   (if (null prims)
+                    then []
+                    else [ stmt $ (var "fst_prims") `cCall` [var "dt", var "backing"] ])
+                  ++
+                   (if (null sub_modules)
+                    then []
+                    else [ if_cond ((var "levels") `cNe` (mkUInt32 1))
+                                   (stmt $ (var "fst_submodules") `cCall` [ var "dt"
+                                                                          , (var "levels") `cSub` (mkUInt32 1)
+                                                                          , var "backing"
+                                                                          ])
+                                   Nothing
+                         ])
+                 )
+         fst_dump = define (fstFnProto sb scope) fst_dump_body
+         fst_dump_fns = (if (null members)
+                         then []
+                         else [ define fst_defs_proto fst_defs_body ])
+                        ++
+                        (if (null prims)
+                         then []
+                         else [ define fst_prims_proto fst_prims_body ])
+                        ++
+                        (if (null sub_modules)
+                         then []
+                         else [ define fst_submodules_proto fst_submodules_body ])
+         fsts = [fst_dump_defs, fst_dump] ++ fst_dump_fns
+
      -- -------------------
      -- Put it all together
      let fns =  [comment "Constructor" constructor]
@@ -2109,6 +2314,8 @@ simCCBlockToClassDefinition sb_map sch_map sb =
              ++ [comment "State dumping routine" state_dump]
              ++ [comment "VCD dumping routines" (blankLines 0)]
              ++ vcds
+             ++ [comment "FST dumping routines" (blankLines 0)]
+             ++ fsts
      return $ intersperse (blankLines 1) fns
 
 -- Generate the schedule function definitions for a SimCCSched.

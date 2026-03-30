@@ -4,6 +4,7 @@
 #include "bluesim_kernel_api.h"
 #include "bs_module.h"
 #include "bs_vcd.h"
+#include "bs_fst.h"
 
 // This is the definition of the GatedClock primitive.
 // It has an internal register, to delay the gate change by a cycle.
@@ -105,6 +106,25 @@ class MOD_GatedClock : public Module
 	     (backing.PORT_CLK_GATE_OUT != PORT_CLK_GATE_OUT))
     {
       vcd_write_val(sim_hdl, vcd_num, PORT_CLK_GATE_OUT, 1);
+      backing.PORT_CLK_GATE_OUT = PORT_CLK_GATE_OUT;
+    }
+  }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 1);
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, fst_num, "new_gate", 1);
+    fst_write_scope_end(sim_hdl);
+    return (fst_num + 1);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_GatedClock& backing)
+  {
+    if (dt == VCD_DUMP_XS)
+      fst_write_x(sim_hdl, fst_num, 1);
+    else if ((dt != VCD_DUMP_CHANGES) ||
+	     (backing.PORT_CLK_GATE_OUT != PORT_CLK_GATE_OUT))
+    {
+      fst_write_val(sim_hdl, fst_num, PORT_CLK_GATE_OUT, 1);
       backing.PORT_CLK_GATE_OUT = PORT_CLK_GATE_OUT;
     }
   }

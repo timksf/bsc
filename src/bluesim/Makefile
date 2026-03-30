@@ -33,7 +33,7 @@ HEADERS = bluesim_kernel_api.h \
           bs_symbol.h \
           bs_system_tasks.h \
           bs_mem_defines.h bs_mem_file.h bs_range_tracker.h \
-          bs_vcd.h bs_module.h bs_target.h \
+          bs_vcd.h bs_fst.h bs_module.h bs_target.h \
           bs_model.h
 
 # These ld export maps get copies to the inst/lib/Bluesim area
@@ -82,7 +82,17 @@ endif
 COPT ?= -O3
 CDEBUG ?= -UUSE_ENTER
 CFLAGS += $(PROF) $(COPT) $(CDEBUG)
-CXXFLAGS += $(PROF) $(COPT) $(CDEBUG) 
+CXXFLAGS += $(PROF) $(COPT) $(CDEBUG)
+
+# libfst include path
+LIBFST_DIR=$(TOP)/libfst/src
+CXXFLAGS += -I$(LIBFST_DIR)
+
+# Flags for compiling libfst C sources
+LIBFST_CFLAGS = $(CFLAGS) -I$(LIBFST_DIR) \
+	-DHAVE_FSEEKO -DHAVE_REALPATH \
+	-Wno-missing-prototypes -Wno-strict-prototypes \
+	-Wno-shadow -Wno-cast-qual
 
 # Description of library of Bluesim primitives
 LIB_PRIM = libbsprim.a
@@ -102,14 +112,25 @@ PRIM_OBJS = prim_ops.o wide_data.o mem_alloc.o target.o \
 # Description of Bluesim kernel library
 LIB_KERNEL = libbskernel.a
 KERNEL_OBJS = kernel.o event_queue.o priority.o symbol.o \
-              reset.o plusargs.o vcd.o portability.o
+              reset.o plusargs.o vcd.o fst.o portability.o \
+              fstapi.o fastlz.o lz4.o
 
 LIBS = $(LIB_PRIM) $(LIB_KERNEL)
 
 vpath %.cxx ../
 
+# Compile rules for libfst C sources
+fstapi.o: $(LIBFST_DIR)/fstapi.c
+	$(CC) $(LIBFST_CFLAGS) -c -o $@ $<
+
+fastlz.o: $(LIBFST_DIR)/fastlz.c
+	$(CC) $(LIBFST_CFLAGS) -c -o $@ $<
+
+lz4.o: $(LIBFST_DIR)/lz4.c
+	$(CC) $(LIBFST_CFLAGS) -c -o $@ $<
+
 %.o:%.cxx
-	$(CXX) -E -MM $< > $*.p
+	$(CXX) $(CXXFLAGS) -E -MM $< > $*.p
 	cp $*.p $*.d; \
 	sed -e 's/#.*//' -e 's/^[^:]*: *//' -e 's/ *\\$$//' \
 	    -e '/^$$/ d' -e 's/$$/ :/' < $*.p >> $*.d; \

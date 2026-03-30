@@ -2587,7 +2587,7 @@ cvtMaybeWith h (Just x) = toTclObj x >>= (\o -> (return [TLst [h,(TCL o)]]))
 simGrammar :: HTclCmdGrammar
 simGrammar = (tclcmd "sim" namespace helpStr "") .+.
              (oneOf [ argGrammar, cdGrammar, clockGrammar, configGrammar
-                    , describeGrammar, getGrammar, getRangeGrammar, loadGrammar
+                    , describeGrammar, fstGrammar, getGrammar, getRangeGrammar, loadGrammar
                     , lookupGrammar, lsGrammar, nextEdgeGrammar, pwdGrammar
                     , runGrammar, runToGrammar
                     , stepGrammar, stopGrammar, syncGrammar, timeGrammar
@@ -2642,6 +2642,11 @@ simGrammar = (tclcmd "sim" namespace helpStr "") .+.
                        (optional $ oneOf [ (kw "on" "Turn on VCD dumping" "")
                                          , (kw "off" "Turn off VCD dumping" "")
                                          , (arg "file" StringArg "Dump to named VCD file")
+                                         ])
+          fstGrammar = (kw "fst" "Control dumping waveforms to an FST file" "") .+.
+                       (optional $ oneOf [ (kw "on" "Turn on FST dumping" "")
+                                         , (kw "off" "Turn off FST dumping" "")
+                                         , (arg "file" StringArg "Dump to named FST file")
                                          ])
           verGrammar = kw "version" "Show Bluesim model version information" ""
 
@@ -3014,6 +3019,32 @@ tclSim ("vcd":args) = do
                             do _ <- bk_set_VCD_file bs file
                                _ <- bk_enable_VCD_dumping bs
                                let bs' = bs { active_vcd_file = Just file }
+                               modifyIORef globalVar (\gv -> gv { tp_bluesim = Just bs' })
+                               return $ TLst []
+                 _ -> internalError $ "tclSim: grammar mismatch: " ++ (show args)
+
+    Nothing -> ioError $ userError ("There is no bluesim model loaded")
+----------
+tclSim ("fst":args) = do
+  g <- readIORef globalVar
+  case (tp_bluesim g) of
+    Just bs -> case args of
+                 []      -> -- return name of active FST file, if any
+                            do l <- toTclObj $ maybeToList (active_fst_file bs)
+                               return $ TCL l
+                 ["on"]  -> -- turn on FST dumping
+                            do _ <- bk_enable_FST_dumping bs
+                               when (isNothing $ active_fst_file bs) $
+                                    let bs' = bs { active_fst_file = Just "dump.fst" }
+                                    in modifyIORef globalVar (\gv -> gv { tp_bluesim = Just bs' })
+                               return $ TLst []
+                 ["off"] -> -- turn off FST dumping
+                            do bk_disable_FST_dumping bs
+                               return $ TLst []
+                 [file]  -> -- dump to named file
+                            do _ <- bk_set_FST_file bs file
+                               _ <- bk_enable_FST_dumping bs
+                               let bs' = bs { active_fst_file = Just file }
                                modifyIORef globalVar (\gv -> gv { tp_bluesim = Just bs' })
                                return $ TLst []
                  _ -> internalError $ "tclSim: grammar mismatch: " ++ (show args)

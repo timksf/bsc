@@ -5,6 +5,7 @@
 #include "bluesim_probes.h"
 #include "bs_module.h"
 #include "bs_vcd.h"
+#include "bs_fst.h"
 #include "bs_reset.h"
 
 #define NO_RESET_REG    0
@@ -174,6 +175,30 @@ class MOD_Reg : public Module
     else
     {
       vcd_write_val(sim_hdl, num++, value, bits);
+    }
+    backing.value = value;
+  }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 1);
+    fst_write_def(sim_hdl, fst_num, inst_name, bits);
+    return (fst_num + 1);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_Reg<T>& backing)
+  {
+    unsigned int num = fst_num;
+    if (dt == VCD_DUMP_XS)
+      fst_write_x(sim_hdl, num++, bits);
+    else if (dt == VCD_DUMP_CHANGES)
+    {
+      if (value != backing.value)
+	fst_write_val(sim_hdl, num++, value, bits);
+      else
+	++num;
+    }
+    else
+    {
+      fst_write_val(sim_hdl, num++, value, bits);
     }
     backing.value = value;
   }
@@ -413,6 +438,75 @@ class MOD_RegAligned : public Module
     backing.value = value;
     backing.next_value = next_value;
   }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 4);
+    unsigned int n = fst_num;
+    fst_write_def(sim_hdl, n++, inst_name, bits);
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, bk_clock_vcd_num(sim_hdl, __clk_handle_0), "CLK", 1);
+    fst_write_def(sim_hdl, n++, "RST", 1);
+    fst_set_clock(sim_hdl, n, __clk_handle_1);
+    fst_write_def(sim_hdl, n++, "EN", 1);
+    fst_set_clock(sim_hdl, n, __clk_handle_1);
+    fst_write_def(sim_hdl, n++, "D_IN", bits);
+    fst_write_def(sim_hdl, fst_num, "Q_OUT", bits);
+    fst_write_scope_end(sim_hdl);
+    return (n);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_RegAligned<T>& backing)
+  {
+    unsigned int num = fst_num;
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, num++, bits);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, bits);
+    }
+    else if (dt == VCD_DUMP_CHANGES)
+    {
+      if (backing.value != value)
+	fst_write_val(sim_hdl, num++, value, bits);
+      else
+	++num;
+      if (in_reset != backing.in_reset)
+	fst_write_val(sim_hdl, num++, !in_reset, 1);
+      else
+	++num;
+      bool at_input_posedge =
+	       bk_clock_val(sim_hdl, __clk_handle_1) == CLK_HIGH &&
+	       bk_clock_last_edge(sim_hdl, __clk_handle_1) == bk_now(sim_hdl);
+      if (at_input_posedge)
+      {
+	did_write = bk_is_same_time(sim_hdl, written_at);
+	if (did_write != backing.did_write)
+	{
+	  fst_write_val(sim_hdl, num++, did_write, 1);
+	  backing.did_write = did_write;
+	}
+	else
+	  ++num;
+      }
+      else
+	++num;
+      if (next_value != backing.next_value)
+	fst_write_val(sim_hdl, num++, next_value, bits);
+      else
+	++num;
+    }
+    else
+    {
+      did_write = bk_is_same_time(sim_hdl, written_at);
+      fst_write_val(sim_hdl, num++, value, bits);
+      fst_write_val(sim_hdl, num++, !in_reset, 1);
+      fst_write_val(sim_hdl, num++, did_write, 1);
+      fst_write_val(sim_hdl, num++, next_value, bits);
+      backing.did_write = did_write;
+    }
+    backing.value = value;
+    backing.next_value = next_value;
+  }
 
  // RegAligned data members
  private:
@@ -591,6 +685,22 @@ class MOD_ConfigReg : public Module
       backing.value = value;
     }
   }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 1);
+    fst_write_def(sim_hdl, fst_num, inst_name, bits);
+    return (fst_num + 1);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_ConfigReg<T>& backing)
+  {
+    if (dt == VCD_DUMP_XS)
+      fst_write_x(sim_hdl, fst_num, bits);
+    else if ((dt != VCD_DUMP_CHANGES) || (backing.value != value))
+    {
+      fst_write_val(sim_hdl, fst_num, value, bits);
+      backing.value = value;
+    }
+  }
 
  // ConfigReg data members
  private:
@@ -758,6 +868,22 @@ class MOD_RegTwo : public Module
     else if ((dt != VCD_DUMP_CHANGES) || (backing.value != value))
     {
       vcd_write_val(sim_hdl, vcd_num, value, bits);
+      backing.value = value;
+    }
+  }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 1);
+    fst_write_def(sim_hdl, fst_num, inst_name, bits);
+    return (fst_num + 1);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_RegTwo<T>& backing)
+  {
+    if (dt == VCD_DUMP_XS)
+      fst_write_x(sim_hdl, fst_num, bits);
+    else if ((dt != VCD_DUMP_CHANGES) || (backing.value != value))
+    {
+      fst_write_val(sim_hdl, fst_num, value, bits);
       backing.value = value;
     }
   }
@@ -1068,6 +1194,74 @@ class MOD_CReg : public Module
       }
     }
 
+    for (unsigned int i = 0; i < ports; i++) {
+      backing.read_val[i] = read_val[i];
+      backing.did_write_rec[i] = did_write_rec[i];
+      backing.write_val[i] = write_val[i];
+    }
+  }
+  unsigned int dump_FST_defs(unsigned int /* num */)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 3 * ports);
+    unsigned int num = fst_num;
+    fst_write_def(sim_hdl, num, inst_name, bits);
+    char buf[17];
+    fst_write_scope_start(sim_hdl, inst_name);
+    for (unsigned int i = 0; i < ports; i++) {
+      snprintf(buf, sizeof(buf), "Q_OUT_%u", i);
+      fst_set_clock(sim_hdl, num, __clk_handle_0);
+      fst_write_def(sim_hdl, num++, buf, bits);
+      snprintf(buf, sizeof(buf), "EN_%u", i);
+      fst_set_clock(sim_hdl, num, __clk_handle_0);
+      fst_write_def(sim_hdl, num++, buf, 1);
+      snprintf(buf, sizeof(buf), "D_IN_%u", i);
+      fst_set_clock(sim_hdl, num, __clk_handle_0);
+      fst_write_def(sim_hdl, num++, buf, bits);
+    }
+    fst_write_scope_end(sim_hdl);
+    return num;
+  }
+  void dump_FST(tVCDDumpType dt, MOD_CReg<T>& backing)
+  {
+    unsigned int num = fst_num;
+    if (dt == VCD_DUMP_XS)
+    {
+      for (unsigned int i = 0; i < ports; i++) {
+	fst_write_x(sim_hdl, num++, bits);
+	fst_write_x(sim_hdl, num++, 1);
+	fst_write_x(sim_hdl, num++, bits);
+      }
+    }
+    else if (dt == VCD_DUMP_CHANGES)
+    {
+      T tmp_q_out = read_val[0];
+      for (unsigned int i = 0; i < ports; i++) {
+	if (tmp_q_out != backing.read_val[i])
+	  fst_write_val(sim_hdl, num, tmp_q_out, bits);
+	num++;
+	read_val[i] = tmp_q_out;
+	if (did_write_rec[i] != backing.did_write_rec[i])
+	  fst_write_val(sim_hdl, num, did_write_rec[i], 1);
+	num++;
+	if (write_val[i] != backing.write_val[i])
+	  fst_write_val(sim_hdl, num, write_val[i], bits);
+	num++;
+	if (did_write_rec[i])
+	  tmp_q_out = write_val[i];
+      }
+    }
+    else
+    {
+      T tmp_q_out = read_val[0];
+      for (unsigned int i = 0; i < ports; i++) {
+	fst_write_val(sim_hdl, num++, tmp_q_out, bits);
+	read_val[i] = tmp_q_out;
+	fst_write_val(sim_hdl, num++, did_write_rec[i], 1);
+	fst_write_val(sim_hdl, num++, write_val[i], bits);
+	if (did_write_rec[i])
+	  tmp_q_out = write_val[i];
+      }
+    }
     for (unsigned int i = 0; i < ports; i++) {
       backing.read_val[i] = read_val[i];
       backing.did_write_rec[i] = did_write_rec[i];

@@ -34,6 +34,7 @@ class Module
 
  protected:
   unsigned int vcd_num;
+  unsigned int fst_num;
   unsigned int symbol_count;
   tSymbol      symbols;
 };

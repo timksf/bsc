@@ -6,6 +6,7 @@
 #include "bluesim_kernel_api.h"
 #include "bs_model.h"
 #include "bs_vcd.h"
+#include "bs_fst.h"
 #include "event_queue.h"
 #include "portability.h"
 
@@ -77,6 +78,43 @@ struct tVCDState {
 };
 
 typedef struct tVCDState tVCDState;
+
+/*
+ * FST state
+ */
+
+struct fstWriterContext;  /* forward declaration */
+
+struct tFSTState {
+  tVCDStatus state;
+  tUInt64 fst_filesize_limit;
+  bool go_xs;
+  tUInt32 next_seq_num;
+  tUInt32 kept_seq_num;
+  bool is_backing_instance;
+
+  std::string fst_file_name;
+
+  tClockMap clk_map;                    // clks for each FST num
+
+  std::map<tTime,tChangeList> changes;  // all pending changes
+  tTime min_pending;                    // lowest time of pending events
+  tTime last_time_written;              // last time values were written
+  bool changes_now;                     // treat changes as immediate
+
+  // external interface
+  struct fstWriterContext* fst_ctx;
+  bool fst_enabled;
+  bool fst_checkpoint;
+  tUInt32 fst_depth;
+
+  char* fst_timescale;
+
+  // maps internal seq nums to fstHandle values
+  std::map<unsigned int, unsigned int> handle_map;
+};
+
+typedef struct tFSTState tFSTState;
 
 /* A tLabel provides the information for creating a label when
  * dumping rule firing information.
@@ -178,6 +216,9 @@ struct tSimState {
 
   // VCD state
   tVCDState vcd;
+
+  // FST state
+  tFSTState fst;
 
 };
 

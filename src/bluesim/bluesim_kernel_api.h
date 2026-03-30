@@ -267,6 +267,19 @@ tStatus bk_VCD_checkpoint(tSimStateHdl simHdl);
 void bk_set_VCD_filesize_limit(tSimStateHdl simHdl, tUInt64 bytes);
 void bk_flush_VCD_output(tSimStateHdl simHdl);
 
+tBool bk_enable_FST_dumping(tSimStateHdl simHdl);
+void bk_disable_FST_dumping(tSimStateHdl simHdl);
+tBool bk_is_FST_dumping_enabled(tSimStateHdl simHdl);
+void bk_FST_combo_update(tSimStateHdl simHdl, tTime t);
+
+/* FST control routines */
+tStatus bk_set_FST_file(tSimStateHdl simHdl, const char* name);
+const char* bk_get_FST_file_name(tSimStateHdl simHdl);
+void bk_set_FST_depth(tSimStateHdl simHdl, tUInt32 depth);
+tStatus bk_FST_checkpoint(tSimStateHdl simHdl);
+void bk_set_FST_filesize_limit(tSimStateHdl simHdl, tUInt64 bytes);
+void bk_flush_FST_output(tSimStateHdl simHdl);
+
 /* Call to enable clock edges without logic (for interactive stepping) */
 void bk_set_interactive(tSimStateHdl simHdl);
 

@@ -6,6 +6,7 @@
 #include "bluesim_kernel_api.h"
 #include "bs_module.h"
 #include "bs_vcd.h"
+#include "bs_fst.h"
 
 // This is the definition of the ClockGen primitive,
 // used to implement mkAbsoluteClock, etc.
@@ -45,6 +46,17 @@ class MOD_ClockGen : public Module
     return (num);
   }
   void dump_VCD(tVCDDumpType /* unused */,
+		MOD_ClockGen& /* unused */) const
+  {
+  }
+  unsigned int dump_FST_defs(unsigned int num) const
+  {
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, bk_clock_vcd_num(sim_hdl, __clk_handle_0), "CLK_OUT", 1);
+    fst_write_scope_end(sim_hdl);
+    return (num);
+  }
+  void dump_FST(tVCDDumpType /* unused */,
 		MOD_ClockGen& /* unused */) const
   {
   }
@@ -189,6 +201,44 @@ class MOD_MakeClock : public Module
     backing.current_clk       = current_clk;
     backing.PORT_CLK_GATE_OUT = PORT_CLK_GATE_OUT;
   }
+  unsigned int dump_FST_defs(unsigned int num)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 2);
+    unsigned int n = fst_num;
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, bk_clock_vcd_num(sim_hdl, __clk_handle_0), "CLK_OUT", 1);
+    fst_write_def(sim_hdl, n++, "CLK_GATE_OUT", 1);
+    fst_write_def(sim_hdl, n++, "CLK_VAL_OUT", 1);
+    fst_write_scope_end(sim_hdl);
+    return (n);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_MakeClock& backing)
+  {
+    unsigned int num = fst_num;
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+    }
+    else if (dt == VCD_DUMP_CHANGES)
+    {
+      if (PORT_CLK_GATE_OUT != backing.PORT_CLK_GATE_OUT)
+	fst_write_val(sim_hdl, num++, PORT_CLK_GATE_OUT, 1);
+      else
+	++num;
+      if (current_clk != backing.current_clk)
+	fst_write_val(sim_hdl, num++, current_clk, 1);
+      else
+	++num;
+    }
+    else
+    {
+      fst_write_val(sim_hdl, num++, PORT_CLK_GATE_OUT, 1);
+      fst_write_val(sim_hdl, num++, current_clk, 1);
+    }
+    backing.current_clk       = current_clk;
+    backing.PORT_CLK_GATE_OUT = PORT_CLK_GATE_OUT;
+  }
 
  public:
   tUInt8 PORT_CLK_GATE_OUT;
@@ -303,6 +353,63 @@ class MOD_ClockInverter : public Module
       preedge = true;
       vcd_write_val(sim_hdl, num++, preedge, 1);
       vcd_write_val(sim_hdl, num++, PORT_CLK_GATE_OUT, 1);
+    }
+    backing.clk_in            = clk_in;
+    backing.clk_gate_in       = clk_gate_in;
+    backing.preedge           = preedge;
+    backing.PORT_CLK_GATE_OUT = PORT_CLK_GATE_OUT;
+  }
+  unsigned int dump_FST_defs(unsigned int num)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 4);
+    unsigned int n = fst_num;
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, n++, "CLK_IN", 1);
+    fst_write_def(sim_hdl, n++, "CLK_GATE_IN", 1);
+    fst_write_def(sim_hdl, n++, "PREEDGE", 1);
+    fst_write_def(sim_hdl, bk_clock_vcd_num(sim_hdl, __clk_handle_0), "CLK_OUT", 1);
+    fst_write_def(sim_hdl, n++, "CLK_GATE_OUT", 1);
+    fst_write_scope_end(sim_hdl);
+    return (n);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_ClockInverter& backing)
+  {
+    unsigned int num = fst_num;
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      preedge = false;
+    }
+    else if (dt == VCD_DUMP_CHANGES)
+    {
+      if (clk_in != backing.clk_in)
+	fst_write_val(sim_hdl, num++, clk_in, 1);
+      else
+	++num;
+      if (clk_gate_in != backing.clk_gate_in)
+	fst_write_val(sim_hdl, num++, clk_gate_in, 1);
+      else
+	++num;
+      preedge = true;
+      if (preedge != backing.preedge)
+	fst_write_val(sim_hdl, num++, preedge, 1);
+      else
+	++num;
+      if (PORT_CLK_GATE_OUT != backing.PORT_CLK_GATE_OUT)
+	fst_write_val(sim_hdl, num++, PORT_CLK_GATE_OUT, 1);
+      else
+	++num;
+    }
+    else
+    {
+      fst_write_val(sim_hdl, num++, clk_in, 1);
+      fst_write_val(sim_hdl, num++, clk_gate_in, 1);
+      preedge = true;
+      fst_write_val(sim_hdl, num++, preedge, 1);
+      fst_write_val(sim_hdl, num++, PORT_CLK_GATE_OUT, 1);
     }
     backing.clk_in            = clk_in;
     backing.clk_gate_in       = clk_gate_in;
@@ -449,6 +556,46 @@ class MOD_ClockDivider : public Module
     {
       vcd_write_val(sim_hdl, num++, !in_reset, 1);
       vcd_write_val(sim_hdl, num++, cntr == (transition - 1), 1);
+    }
+    backing.in_reset = in_reset;
+    backing.cntr     = cntr;
+  }
+  unsigned int dump_FST_defs(unsigned int num)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, 2);
+    unsigned int n = fst_num;
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, bk_clock_vcd_num(sim_hdl, __clk_handle_1), "CLK_IN", 1);
+    fst_write_def(sim_hdl, bk_clock_vcd_num(sim_hdl, __clk_handle_0), "CLK_OUT", 1);
+    fst_write_def(sim_hdl, n++, "RST", 1);
+    fst_write_def(sim_hdl, n++, "PREEDGE", 1);
+    fst_write_scope_end(sim_hdl);
+    return (n);
+  }
+  void dump_FST(tVCDDumpType dt, MOD_ClockDivider& backing)
+  {
+    unsigned int num = fst_num;
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+    }
+    else if (dt == VCD_DUMP_CHANGES)
+    {
+      if (in_reset != backing.in_reset)
+	fst_write_val(sim_hdl, num++, !in_reset, 1);
+      else
+	++num;
+      if ((cntr != backing.cntr) &&
+	  (cntr == (transition-1) || backing.cntr != (transition - 1)))
+	fst_write_val(sim_hdl, num++, cntr == (transition - 1), 1);
+      else
+	++num;
+    }
+    else
+    {
+      fst_write_val(sim_hdl, num++, !in_reset, 1);
+      fst_write_val(sim_hdl, num++, cntr == (transition - 1), 1);
     }
     backing.in_reset = in_reset;
     backing.cntr     = cntr;

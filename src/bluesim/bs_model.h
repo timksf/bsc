@@ -22,6 +22,8 @@ class Model
   virtual void dump_state() = 0;
   virtual void dump_VCD_defs() = 0;
   virtual void dump_VCD(tVCDDumpType dt) = 0;
+  virtual void dump_FST_defs() = 0;
+  virtual void dump_FST(tVCDDumpType dt) = 0;
 
  // Require construction be of the derived classes, not this class
  protected:

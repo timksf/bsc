@@ -251,6 +251,9 @@ convertSchedules flags creation_time top_id def_clk def_rst sb_map ff_map
               , decl $ function void (mkVar "dump_VCD_defs") []
               , decl $ function void (mkVar "dump_VCD")
                            [ (userType "tVCDDumpType") (mkVar "dt") ]
+              , decl $ function void (mkVar "dump_FST_defs") []
+              , decl $ function void (mkVar "dump_FST")
+                           [ (userType "tVCDDumpType") (mkVar "dt") ]
               ]
             ]
         class_decl =
@@ -528,6 +531,25 @@ convertSchedules flags creation_time top_id def_clk def_rst sb_map ff_map
         vcd_methods = [ comment "VCD dumping functions" (blankLines 0) ] ++
                       top_backing ++ [ vcd_hdr_def, vcd_def ]
 
+        -- function for dumping FSTs
+        top_fst_backing = [mkFSTBacking top_blk]
+        fst_depth_val   = (var "fst_depth") `cCall` [ var "sim_hdl" ]
+        fst_hdr_proto   = function void (mkScopedVar "dump_FST_defs") []
+        fst_hdr_def     = define fst_hdr_proto
+                                 (block [ mkDumpCall top_blk "dump_FST_defs"
+                                                     [ fst_depth_val ]])
+        fst_backing_fn sb = (var ((sb_name sb) ++ "_fst_backing")) `cCall` [ var "sim_hdl" ]
+        fst_proto       = function void (mkScopedVar "dump_FST") [ dump_type ]
+        fst_def         = define fst_proto
+                                 (block [ mkDumpCall top_blk "dump_FST"
+                                                     [ var "dt"
+                                                     , fst_depth_val
+                                                     , fst_backing_fn top_blk
+                                                     ]
+                                        ])
+        fst_methods = [ comment "FST dumping functions" (blankLines 0) ] ++
+                      top_fst_backing ++ [ fst_hdr_def, fst_def ]
+
         fname = "model_" ++ (modName top_blk)
 
     mkCxxAndH flags sb_map fname uses_foreign False
@@ -543,7 +565,8 @@ convertSchedules flags creation_time top_id def_clk def_rst sb_map ff_map
                  model_methods ++
                  version_methods ++
                  dump_methods ++
-                 vcd_methods
+                 vcd_methods ++
+                 fst_methods
                 )
               )
               writeFileC
@@ -594,6 +617,30 @@ mkBacking sb =
       new_expr = new (classType (pfxMod ++ (modName sb)))
                      (Just [var "simHdl", mkStr "top", mkNULL])
       backing_fn = (var "vcd_set_backing_instance")
+      fn_body  = [ static . ptr . mod_type $
+                         (mkVar "instance") `assign` mkNULL
+                 , if_cond ((var "instance") `cEq` mkNULL)
+                           (block [ stmt $ backing_fn `cCall` [ var "simHdl", mkBool True ]
+                                  , (mkVar "instance") `assign` new_expr
+                                  , stmt $ backing_fn `cCall` [ var "simHdl", mkBool False ]
+                                  ]
+                           )
+                           Nothing
+                 , ret (Just (cDeref (var "instance")))
+                 ]
+  in define fn_proto (block fn_body)
+
+-- Make a function implementing "construct-on-first-use", but
+-- specialized for the FST backing structures
+mkFSTBacking :: SimCCBlock -> CCFragment
+mkFSTBacking sb =
+  let mod_type = moduleType sb []
+      fn_name  = (sb_name sb) ++ "_fst_backing"
+      fn_proto = function (reference . mod_type) (mkVar fn_name)
+                     [ (userType "tSimStateHdl") (mkVar "simHdl") ]
+      new_expr = new (classType (pfxMod ++ (modName sb)))
+                     (Just [var "simHdl", mkStr "top", mkNULL])
+      backing_fn = (var "fst_set_backing_instance")
       fn_body  = [ static . ptr . mod_type $
                          (mkVar "instance") `assign` mkNULL
                  , if_cond ((var "instance") `cEq` mkNULL)

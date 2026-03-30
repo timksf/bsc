@@ -7,6 +7,7 @@
 #include "bluesim_probes.h"
 #include "bs_module.h"
 #include "bs_vcd.h"
+#include "bs_fst.h"
 
 typedef enum { FIFO_SIMPLE, FIFO_LOOPY, FIFO_BYPASS} tFifoType;
 
@@ -403,6 +404,162 @@ class MOD_Fifo : public Module
 	  vcd_write_val(sim_hdl, num++, data[idx], bits);
 	else
 	  vcd_write_x(sim_hdl, num++, bits);
+      }
+      backing.did_enq = did_enq;
+      backing.did_deq = did_deq;
+      backing.did_clear = did_clear;
+    }
+
+    backing.fst = fst;
+    backing.elems = elems;
+    for (unsigned int i = 0; i < size; ++i)
+      backing.data[i] = data[i];
+    backing.in_reset = in_reset;
+    backing.dummyval = dummyval;
+  }
+  unsigned int dump_FST_defs(unsigned int num)
+  {
+    fst_num = fst_reserve_ids(sim_hdl, size + 6 + (bits > 0 ? 1 : 0));
+    unsigned int n = fst_num;
+    char buf[16];
+    fst_write_scope_start(sim_hdl, inst_name);
+    fst_write_def(sim_hdl, bk_clock_vcd_num(sim_hdl, __clk_handle_0), "CLK", 1);
+    fst_write_def(sim_hdl, n++, "RST", 1);
+    fst_write_def(sim_hdl, n++, "FULL_N", 1);
+    fst_write_def(sim_hdl, n++, "EMPTY_N", 1);
+    fst_set_clock(sim_hdl, n, __clk_handle_0);
+    fst_write_def(sim_hdl, n++, "ENQ", 1);
+    if (bits > 0)
+    {
+      fst_set_clock(sim_hdl, n, __clk_handle_0);
+      fst_write_def(sim_hdl, n++, "D_IN", bits);
+    }
+    fst_set_clock(sim_hdl, n, __clk_handle_0);
+    fst_write_def(sim_hdl, n++, "DEQ", 1);
+    fst_set_clock(sim_hdl, n, __clk_handle_0);
+    fst_write_def(sim_hdl, n++, "CLR", 1);
+    if (bits > 0)
+      fst_write_def(sim_hdl, n,"D_OUT", bits);  // alias of arr_0
+    for (unsigned int i = 0; i < size; ++i)
+    {
+      snprintf(buf, 16, "arr_%d", i);
+      fst_write_def(sim_hdl, n++, buf, bits);
+    }
+    fst_write_scope_end(sim_hdl);
+    return n;
+  }
+  void dump_FST(tVCDDumpType dt, MOD_Fifo<T>& backing)
+  {
+    unsigned int num = fst_num;
+    if (dt == VCD_DUMP_XS)
+    {
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      if (bits > 0)
+	fst_write_x(sim_hdl, num++, bits);
+      fst_write_x(sim_hdl, num++, 1);
+      fst_write_x(sim_hdl, num++, 1);
+      for (unsigned int i = 0; i < size; ++i)
+	fst_write_x(sim_hdl, num++, bits);
+    }
+    else if (dt == VCD_DUMP_CHANGES)
+    {
+      if (in_reset != backing.in_reset)
+	fst_write_val(sim_hdl, num++, !in_reset, 1);
+      else
+	++num;
+      if (METH_notFull() != backing.METH_notFull())
+	fst_write_val(sim_hdl, num++, METH_notFull(), 1);
+      else
+	++num;
+      if (METH_notEmpty() != backing.METH_notEmpty())
+	fst_write_val(sim_hdl, num++, METH_notEmpty(), 1);
+      else
+	++num;
+      bool at_posedge =
+	       bk_clock_val(sim_hdl, __clk_handle_0) == CLK_HIGH &&
+	       bk_clock_last_edge(sim_hdl, __clk_handle_0) == bk_now(sim_hdl);
+      if (at_posedge)
+      {
+	did_enq = bk_is_same_time(sim_hdl, enq_at);
+	if (did_enq != backing.did_enq)
+	{
+	  fst_write_val(sim_hdl, num++, did_enq, 1);
+	  backing.did_enq = did_enq;
+	}
+	else
+	  ++num;
+      }
+      else
+	++num;
+      if (bits > 0)
+      {
+	if (dummyval != backing.dummyval)
+	  fst_write_val(sim_hdl, num++, dummyval, bits);
+	else
+	  ++num;
+      }
+      if (at_posedge)
+      {
+	did_deq = bk_is_same_time(sim_hdl, deq_at);
+	if (did_deq != backing.did_deq)
+	{
+	  fst_write_val(sim_hdl, num++, did_deq, 1);
+	  backing.did_deq = did_deq;
+	}
+	else
+	  ++num;
+      }
+      else
+	++num;
+      if (at_posedge)
+      {
+	did_clear = bk_is_same_time(sim_hdl, clear_at);
+	if (did_clear != backing.did_clear)
+	{
+	  fst_write_val(sim_hdl, num++, did_clear, 1);
+	  backing.did_clear = did_clear;
+	}
+	else
+	  ++num;
+      }
+      else
+	++num;
+      for (unsigned int i = 0; i < size; ++i)
+      {
+	unsigned int idx = (fst + i) % size;
+	unsigned int b_idx = (backing.fst + i) % size;
+	if ((i < elems) &&
+	    ((i >= backing.elems) || (data[idx] != backing.data[b_idx])))
+	  fst_write_val(sim_hdl, num++, data[idx], bits);
+	else if ((i >= elems) && (i < backing.elems))
+	  fst_write_x(sim_hdl, num++, bits);
+	else
+	  ++num;
+      }
+    }
+    else
+    {
+      fst_write_val(sim_hdl, num++, !in_reset, 1);
+      fst_write_val(sim_hdl, num++, METH_notFull(), 1);
+      fst_write_val(sim_hdl, num++, METH_notEmpty(), 1);
+      did_enq = bk_is_same_time(sim_hdl, enq_at);
+      did_deq = bk_is_same_time(sim_hdl, deq_at);
+      did_clear = bk_is_same_time(sim_hdl, clear_at);
+      fst_write_val(sim_hdl, num++, did_enq, 1);
+      if (bits > 0)
+	fst_write_val(sim_hdl, num++, dummyval, bits);
+      fst_write_val(sim_hdl, num++, did_deq, 1);
+      fst_write_val(sim_hdl, num++, did_clear, 1);
+      for (unsigned int i = 0; i < size; ++i)
+      {
+	unsigned int idx = (fst + i) % size;
+	if (i < elems)
+	  fst_write_val(sim_hdl, num++, data[idx], bits);
+	else
+	  fst_write_x(sim_hdl, num++, bits);
       }
       backing.did_enq = did_enq;
       backing.did_deq = did_deq;
