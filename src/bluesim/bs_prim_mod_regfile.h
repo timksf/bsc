@@ -480,14 +480,91 @@ class MOD_RegFile : public Module
   }
   unsigned int dump_FST_defs(unsigned int num)
   {
-    // Memory contents are not dumped
-    return (num);
-  }
-  void dump_FST(tVCDDumpType /* unused */,
-		MOD_RegFile<AT,DT>& /* unused */)
+    if (!fst_trace_memories(sim_hdl))
+      return (num);
 
+    unsigned long long num_entries = (unsigned long long)(hi_addr - lo_addr) + 1;
+    tUInt32 max_depth = fst_max_array_depth(sim_hdl);
+    if (max_depth > 0 && num_entries > max_depth)
+      return (num);
+
+    fst_num = fst_reserve_ids(sim_hdl, (unsigned int)num_entries);
+    unsigned int n = fst_num;
+
+    bool use_scope = fst_use_array_scope(sim_hdl);
+    if (use_scope)
+    {
+      fst_write_array_scope_start(sim_hdl, inst_name);
+      fst_write_array_attr(sim_hdl, (unsigned int)num_entries);
+    }
+
+    char name_buf[128];
+    for (unsigned long long i = 0; i < num_entries; ++i)
+    {
+      if (use_scope)
+        snprintf(name_buf, sizeof(name_buf), "[%llu]", i);
+      else
+        snprintf(name_buf, sizeof(name_buf), "%s[%llu]", inst_name, i);
+      fst_write_def(sim_hdl, n++, name_buf, data_bits);
+    }
+
+    if (use_scope)
+      fst_write_array_scope_end(sim_hdl);
+    return n;
+  }
+  void dump_FST(tVCDDumpType dt, MOD_RegFile<AT,DT>& backing)
   {
-    // Memory contents are not dumped
+    if (!fst_trace_memories(sim_hdl))
+      return;
+
+    unsigned long long num_entries = (unsigned long long)(hi_addr - lo_addr) + 1;
+    tUInt32 max_depth = fst_max_array_depth(sim_hdl);
+    if (max_depth > 0 && num_entries > max_depth)
+      return;
+
+    unsigned int num = fst_num;
+    if (dt == VCD_DUMP_XS)
+    {
+      for (unsigned long long i = 0; i < num_entries; ++i)
+        fst_write_x(sim_hdl, num++, data_bits);
+    }
+    else if (dt == VCD_DUMP_CHANGES)
+    {
+      // Only dump the address that was written this cycle
+      if (bk_is_same_time(sim_hdl, upd_at))
+      {
+        unsigned long long idx = (unsigned long long)(upd_addr - lo_addr);
+        DT* value_ptr = lookup_value(upd_addr, false);
+        DT* backing_ptr = backing.lookup_value(upd_addr, true);
+        if (value_ptr != NULL && backing_ptr != NULL)
+        {
+          if (*value_ptr != *backing_ptr)
+          {
+            fst_write_val(sim_hdl, fst_num + (unsigned int)idx,
+                          *value_ptr, data_bits);
+            *backing_ptr = *value_ptr;
+          }
+        }
+      }
+    }
+    else
+    {
+      // Initial, checkpoint, restart: dump all entries
+      for (unsigned long long i = 0; i < num_entries; ++i)
+      {
+        AT addr = lo_addr + (AT)i;
+        DT* value_ptr = lookup_value(addr, false);
+        DT* backing_ptr = backing.lookup_value(addr, true);
+        if (value_ptr != NULL)
+        {
+          fst_write_val(sim_hdl, num++, *value_ptr, data_bits);
+          if (backing_ptr != NULL)
+            *backing_ptr = *value_ptr;
+        }
+        else
+          fst_write_x(sim_hdl, num++, data_bits);
+      }
+    }
   }
 
  // RegFile data members

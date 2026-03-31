@@ -84,6 +84,21 @@ void bk_set_FST_filesize_limit(tSimStateHdl simHdl, tUInt64 bytes)
     fstWriterSetDumpSizeLimit(s->fst_ctx, bytes);
 }
 
+void bk_set_FST_trace_memories(tSimStateHdl simHdl, tBool enable)
+{
+  (simHdl->fst).fst_trace_memories = (enable != 0);
+}
+
+void bk_set_FST_max_array_depth(tSimStateHdl simHdl, tUInt32 depth)
+{
+  (simHdl->fst).fst_max_array_depth = depth;
+}
+
+void bk_set_FST_use_array_scope(tSimStateHdl simHdl, tBool enable)
+{
+  (simHdl->fst).fst_use_array_scope = (enable != 0);
+}
+
 void bk_flush_FST_output(tSimStateHdl simHdl)
 {
   if ((simHdl->fst).fst_ctx != NULL)
@@ -115,6 +130,9 @@ void fst_reset(tSimStateHdl simHdl)
   s->state = VCD_OFF;
   s->fst_enabled = false;
   s->fst_depth = 0;
+  s->fst_trace_memories = false;
+  s->fst_max_array_depth = 0;
+  s->fst_use_array_scope = false;
   s->fst_filesize_limit = 0llu;
   s->fst_checkpoint = false;
   s->go_xs = false;
@@ -215,6 +233,43 @@ bool fst_check_file_size(tSimStateHdl simHdl)
     return false;
   }
   return true;
+}
+
+bool fst_trace_memories(tSimStateHdl simHdl)
+{
+  return (simHdl->fst).fst_trace_memories;
+}
+
+tUInt32 fst_max_array_depth(tSimStateHdl simHdl)
+{
+  return (simHdl->fst).fst_max_array_depth;
+}
+
+bool fst_use_array_scope(tSimStateHdl simHdl)
+{
+  return (simHdl->fst).fst_use_array_scope;
+}
+
+void fst_write_array_scope_start(tSimStateHdl simHdl, const char* name)
+{
+  tFSTState* s = &(simHdl->fst);
+  if (s->fst_ctx != NULL)
+    fstWriterSetScope(s->fst_ctx, FST_ST_SV_ARRAY, name, NULL);
+}
+
+void fst_write_array_scope_end(tSimStateHdl simHdl)
+{
+  tFSTState* s = &(simHdl->fst);
+  if (s->fst_ctx != NULL)
+    fstWriterSetUpscope(s->fst_ctx);
+}
+
+void fst_write_array_attr(tSimStateHdl simHdl, unsigned int num_elements)
+{
+  tFSTState* s = &(simHdl->fst);
+  if (s->fst_ctx != NULL)
+    fstWriterSetAttrBegin(s->fst_ctx, FST_AT_ARRAY, FST_AR_UNPACKED,
+                          "", (uint64_t)num_elements);
 }
 
 void fst_set_backing_instance(tSimStateHdl simHdl, bool b)

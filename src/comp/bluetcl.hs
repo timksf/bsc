@@ -2646,6 +2646,12 @@ simGrammar = (tclcmd "sim" namespace helpStr "") .+.
           fstGrammar = (kw "fst" "Control dumping waveforms to an FST file" "") .+.
                        (optional $ oneOf [ (kw "on" "Turn on FST dumping" "")
                                          , (kw "off" "Turn off FST dumping" "")
+                                         , (kw "arrays" "Control memory/array tracing in FST" "") .+.
+                                           (optional $ oneOf [ (kw "on" "Enable memory tracing (flat, Verilog-compatible)" "")
+                                                             , (kw "off" "Disable memory tracing" "")
+                                                             , (kw "scope" "Enable with FST SV_ARRAY scope type" "")
+                                                             , (arg "depth" IntArg "Max array depth (0 = unlimited)")
+                                                             ])
                                          , (arg "file" StringArg "Dump to named FST file")
                                          ])
           verGrammar = kw "version" "Show Bluesim model version information" ""
@@ -3023,6 +3029,35 @@ tclSim ("vcd":args) = do
                                return $ TLst []
                  _ -> internalError $ "tclSim: grammar mismatch: " ++ (show args)
 
+    Nothing -> ioError $ userError ("There is no bluesim model loaded")
+----------
+tclSim ("fst":"arrays":args) = do
+  g <- readIORef globalVar
+  case (tp_bluesim g) of
+    Just bs -> case args of
+                 []      -> -- return whether array tracing is active
+                            return $ TLst []
+                 ["on"]  -> -- enable memory/array tracing, flat (Verilog-compatible)
+                            do bk_set_FST_trace_memories bs True
+                               bk_set_FST_max_array_depth bs 0
+                               bk_set_FST_use_array_scope bs False
+                               return $ TLst []
+                 ["off"] -> -- disable memory/array tracing
+                            do bk_set_FST_trace_memories bs False
+                               return $ TLst []
+                 ["scope"] -> -- enable with FST_ST_SV_ARRAY scope
+                              do bk_set_FST_trace_memories bs True
+                                 bk_set_FST_max_array_depth bs 0
+                                 bk_set_FST_use_array_scope bs True
+                                 return $ TLst []
+                 [depth] -> -- enable with max depth (flat mode)
+                            case reads depth of
+                              [(n, "")] -> do bk_set_FST_trace_memories bs True
+                                              bk_set_FST_max_array_depth bs n
+                                              bk_set_FST_use_array_scope bs False
+                                              return $ TLst []
+                              _ -> ioError $ userError ("Invalid depth: " ++ depth)
+                 _ -> internalError $ "tclSim: grammar mismatch: " ++ (show ("fst":"arrays":args))
     Nothing -> ioError $ userError ("There is no bluesim model loaded")
 ----------
 tclSim ("fst":args) = do

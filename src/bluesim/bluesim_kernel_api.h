@@ -278,6 +278,9 @@ const char* bk_get_FST_file_name(tSimStateHdl simHdl);
 void bk_set_FST_depth(tSimStateHdl simHdl, tUInt32 depth);
 tStatus bk_FST_checkpoint(tSimStateHdl simHdl);
 void bk_set_FST_filesize_limit(tSimStateHdl simHdl, tUInt64 bytes);
+void bk_set_FST_trace_memories(tSimStateHdl simHdl, tBool enable);
+void bk_set_FST_max_array_depth(tSimStateHdl simHdl, tUInt32 depth);
+void bk_set_FST_use_array_scope(tSimStateHdl simHdl, tBool enable);
 void bk_flush_FST_output(tSimStateHdl simHdl);
 
 /* Call to enable clock edges without logic (for interactive stepping) */

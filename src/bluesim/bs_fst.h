@@ -71,4 +71,12 @@ extern void fst_write_val(tSimStateHdl simHdl,
 			  const tUWide& value,
 			  unsigned int width);
 
+/* Array/memory dumping support (FST only) */
+extern bool fst_trace_memories(tSimStateHdl simHdl);
+extern tUInt32 fst_max_array_depth(tSimStateHdl simHdl);
+extern bool fst_use_array_scope(tSimStateHdl simHdl);
+extern void fst_write_array_scope_start(tSimStateHdl simHdl, const char* name);
+extern void fst_write_array_scope_end(tSimStateHdl simHdl);
+extern void fst_write_array_attr(tSimStateHdl simHdl, unsigned int num_elements);
+
 #endif /* __BS_FST_H__ */

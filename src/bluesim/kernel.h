@@ -107,6 +107,9 @@ struct tFSTState {
   bool fst_enabled;
   bool fst_checkpoint;
   tUInt32 fst_depth;
+  bool fst_trace_memories;
+  tUInt32 fst_max_array_depth;
+  bool fst_use_array_scope;
 
   char* fst_timescale;
 

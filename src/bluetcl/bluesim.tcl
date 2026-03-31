@@ -38,6 +38,8 @@ proc usage {} {
     puts "  -v            = print version information and exit"
     puts "  -V \[<file>\]   = dump waveforms to VCD file (default: dump.vcd)"
     puts "  -F \[<file>\]   = dump waveforms to FST file (default: dump.fst)"
+    puts "  -A \[<depth>\]  = include memory/array contents in FST dump (flat)"
+    puts "  -As           = include memory/array contents using FST array scope"
     puts "  +<arg>        = Verilog-style plus-arg"
     puts ""    
     puts "Examples:"
@@ -85,6 +87,7 @@ set script_file ""
 set run_cmd "run"
 set vcd_arg ""
 set fst_arg ""
+set fst_arrays_arg ""
 set arg_list [list]
 set show_version 0
 
@@ -187,6 +190,19 @@ while {$current_arg != $stop_at_arg} {
 		      incr current_arg 1
                   }
                 } 
+      "-As"     { incr current_arg 1
+		  set fst_arrays_arg "scope"
+                }
+      "-A"      { incr current_arg 1
+	          if { ($current_arg == $stop_at_arg) ||
+		       [string match "-*" [lindex $argv $current_arg]] ||
+		       [string match "+*" [lindex $argv $current_arg]] } then {
+		      set fst_arrays_arg "on"
+                  } else {			  
+		      set fst_arrays_arg [lindex $argv $current_arg]
+		      incr current_arg 1
+                  }
+                } 
       "+*"      { incr current_arg 1
 	          lappend arg_list [string range $arg 1 [string length $arg]]
                 }
@@ -248,6 +264,11 @@ if {$vcd_arg != ""} {
 # set up FST if requested
 if {$fst_arg != ""} {
     eval "sim fst $fst_arg"
+}
+
+# set up FST array tracing if requested
+if {$fst_arrays_arg != ""} {
+    eval "sim fst arrays $fst_arrays_arg"
 }
 
 # if there is no script supplied, just run the model in the requested mode

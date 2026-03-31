@@ -275,6 +275,14 @@ foreign import ccall "dynamic"
   dl_ptr_ret_void :: FunPtr (Ptr CUInt -> IO ()) -> (Ptr CUInt -> IO ())
 
 foreign import ccall "dynamic"
+  dl_ptr_uchar_ret_void :: FunPtr (Ptr CUInt -> CUChar -> IO ()) ->
+                           (Ptr CUInt -> CUChar -> IO ())
+
+foreign import ccall "dynamic"
+  dl_ptr_uint_ret_void :: FunPtr (Ptr CUInt -> CUInt -> IO ()) ->
+                         (Ptr CUInt -> CUInt -> IO ())
+
+foreign import ccall "dynamic"
   dl_ptr_str_ret_void :: FunPtr (Ptr CUInt -> CString -> IO ()) ->
                          (Ptr CUInt -> CString -> IO ())
 
@@ -436,6 +444,9 @@ data BluesimModel =
        , bk_set_FST_file        :: String -> IO BSStatus
        , bk_enable_FST_dumping  :: IO Bool
        , bk_disable_FST_dumping :: IO ()
+       , bk_set_FST_trace_memories  :: Bool -> IO ()
+       , bk_set_FST_max_array_depth :: Word32 -> IO ()
+       , bk_set_FST_use_array_scope :: Bool -> IO ()
        , bk_shutdown            :: IO ()
        }
 
@@ -496,7 +507,10 @@ loadBluesimModel fname top_name = do
   c_bk_disable_VCD_dumping <- dlsym dl "bk_disable_VCD_dumping"
   c_bk_set_FST_file        <- dlsym dl "bk_set_FST_file"
   c_bk_enable_FST_dumping  <- dlsym dl "bk_enable_FST_dumping"
-  c_bk_disable_FST_dumping <- dlsym dl "bk_disable_FST_dumping"
+  c_bk_disable_FST_dumping      <- dlsym dl "bk_disable_FST_dumping"
+  c_bk_set_FST_trace_memories   <- dlsym dl "bk_set_FST_trace_memories"
+  c_bk_set_FST_max_array_depth  <- dlsym dl "bk_set_FST_max_array_depth"
+  c_bk_set_FST_use_array_scope  <- dlsym dl "bk_set_FST_use_array_scope"
   c_bk_shutdown            <- dlsym dl "bk_shutdown"
   -- convert functions to Haskell types and build BluesimModel
   let new_model :: IO WordPtr
@@ -634,6 +648,9 @@ loadBluesimModel fname top_name = do
                           , bk_set_FST_file        = set_fst_fn sim_hdl
                           , bk_enable_FST_dumping  = (fromC $ dl_ptr_ret_uchar c_bk_enable_FST_dumping) sim_hdl
                           , bk_disable_FST_dumping = (fromC $ dl_ptr_ret_void c_bk_disable_FST_dumping) sim_hdl
+                          , bk_set_FST_trace_memories  = (fromC $ dl_ptr_uchar_ret_void c_bk_set_FST_trace_memories) sim_hdl
+                          , bk_set_FST_max_array_depth = (fromC $ dl_ptr_uint_ret_void c_bk_set_FST_max_array_depth) sim_hdl
+                          , bk_set_FST_use_array_scope = (fromC $ dl_ptr_uchar_ret_void c_bk_set_FST_use_array_scope) sim_hdl
                           , bk_shutdown            = (fromC $ dl_ptr_ret_void c_bk_shutdown) sim_hdl
                           })
 
