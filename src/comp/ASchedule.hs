@@ -734,7 +734,7 @@ aSchedule_step1 errh flags prefix pps amod = do
                     ruleMethodUseMap ncSetCF cf_or_disjoint
 
   -- for better memory performance, force the computation
-  hyper (G.toList cfConflictMap0) $
+  deepseq (G.toList cfConflictMap0) $
       when trace_sched_steps $ traceM ("forcing cfConflictMap0")
 
   -- ====================
@@ -753,7 +753,7 @@ aSchedule_step1 errh flags prefix pps amod = do
                     ruleMethodUseMap ncSetPC cf_map_test
 
   -- for better memory performance, force the computation
-  hyper (G.toList pcConflictMap0) $
+  deepseq (G.toList pcConflictMap0) $
       when trace_sched_steps $ traceM ("forcing pcConflictMap0")
 
   -- ====================
@@ -777,7 +777,7 @@ aSchedule_step1 errh flags prefix pps amod = do
                     ruleMethodUseMap ncSetSC pc_map_test
 
   -- for better memory performance, force the computation
-  hyper (G.toList scConflictMap0) $
+  deepseq (G.toList scConflictMap0) $
       when trace_sched_steps $ traceM ("forcing scConflictMap0")
 
   -- ====================
@@ -844,13 +844,13 @@ aSchedule_step1 errh flags prefix pps amod = do
 
   -- XXX Do we need this again, if we already forced the initial maps?
 {-
-  hyper (G.toList cfConflictMap) $
+  deepseq (G.toList cfConflictMap) $
       when trace_sched_steps $ traceM ("forcing cfConflictMap")
 
-  hyper (G.toList pcConflictMap) $
+  deepseq (G.toList pcConflictMap) $
       when trace_sched_steps $ traceM ("forcing pcConflictMap")
 
-  hyper (G.toList scConflictMap) $
+  deepseq (G.toList scConflictMap) $
       when trace_sched_steps $ traceM ("forcing scConflictMap")
 -}
 
@@ -912,7 +912,7 @@ aSchedule_step1 errh flags prefix pps amod = do
       -- table, such a method is given the value 0.
       -- Also consider conflicting methods available infinitely many times
       -- because the schedule resolves that resource conflict
-  let resMax' = tr "let resMax'" $
+  let resMax' = tr "let resMax'" $ M.fromList
           [(r,n') | let (NoConflictSet pc) = ncSetPC,
                     let (NoConflictSet cf) = ncSetCF,
                     (r,n) <- resMax,
@@ -934,7 +934,7 @@ aSchedule_step1 errh flags prefix pps amod = do
 
   -- record the RAT in the state
   s <- get
-  put (s { sm_resource_alloc_table = Just (sortRat resAllocTable) })
+  put (s { sm_resource_alloc_table = Just resAllocTable })
 
   -- Converts the triplets in resDrops to conflict edges (in both directions)
   let resDrops' = tr "let resDrops'" $
@@ -5212,12 +5212,6 @@ combinedGraphFullToDOT flags timeStr modName ifcRuleNames userRuleNames seq_map 
 -- ========================================================================
 -- Utility functions
 --
-
--- hack to avoid sorting order differences between ghc and hbc
--- when using SpeedyString
-sortRat :: RAT -> RAT
-sortRat = sortBy cmp
-    where cmp x y = compare (ppString x) (ppString y)
 
 -- --------------------
 

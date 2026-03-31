@@ -82,23 +82,16 @@ interface VRWire#(type a) ;
    method Bool whas() ;
 endinterface: VRWire
 
-interface VRWireN#(numeric type n);
-  method PrimAction wset(Bit#(n) datain);
-  method Bit#(n) wget();
-  method Bit#(1) whas();
-endinterface
-
-// for addCFWire desugaring
-module vMkRWire1(VRWireN#(1));
-
+// __mkRWireSubmodule only exists so that BSC can get a handle on the
+// 'AVInst' for the submodule instantiation of 'vMkRWire', by applying
+// a few compiler stages to the definition.  This occurs in
+// 'AAddSchedAssumps' where BSC implements the checking of
+// 'conflict_free' attributes by adding RWire writes to those rules,
+// and for that it needs to instantiate new RWire modules.
+//
+module __mkRWireSubmodule();
    (* hide *)
    VRWire#(Bit#(1)) _rw <- vMkRWire;
-   method wset(v);
-      return(toPrimAction(_rw.wset(v)));
-   endmethod
-   method wget = _rw.wget;
-   method whas = pack(_rw.whas);
-
 endmodule
 
 interface VRWire0;
@@ -186,7 +179,7 @@ module mkRWire (RWire#(a))
 
          ifc = (interface RWire;
                    method wget() ;
-                      return (_r.whas ? (tagged Valid (?)) : tagged Invalid);
+                      return (_r.whas ? (tagged Valid (unpack(0))) : tagged Invalid);
                    endmethod: wget
 
                    method Action wset(x);
@@ -222,7 +215,7 @@ module mkRWireSBR (RWire#(a))
 
          ifc = (interface RWire;
                    method wget() ;
-                      return (_r.whas ? (tagged Valid (?)) : tagged Invalid);
+                      return (_r.whas ? (tagged Valid (unpack(0))) : tagged Invalid);
                    endmethod: wget
 
                    method Action wset(x);
@@ -343,7 +336,7 @@ module mkBypassWire(Wire#(data_t)) provisos (Bits#(data_t, data_t_size));
                    method Action wset(x);
                      _r.wset;
                    endmethod
-                   method wget = ?;
+                   method wget = unpack(0);
                 endinterface);
       end
    else
@@ -413,19 +406,6 @@ module mkPulseWireOR(PulseWire);
 endmodule
 
 // =======
-
-// for addCFWire desugaring
-module vMkUnsafeRWire1(VRWireN#(1));
-
-   (* hide *)
-   VRWire#(Bit#(1)) _rw <- vMkUnsafeRWire;
-   method wset(v);
-      return(toPrimAction(_rw.wset(v)));
-   endmethod
-   method wget = _rw.wget;
-   method whas = pack(_rw.whas);
-
-endmodule
 
 import "BVI" RWire =
    module vMkUnsafeRWire (VRWire#(a))
@@ -507,7 +487,7 @@ module mkUnsafeRWire (RWire#(a))
 
          ifc = (interface RWire;
                    method wget() ;
-                      return (_r.whas ? (tagged Valid (?)) : tagged Invalid);
+                      return (_r.whas ? (tagged Valid (unpack(0))) : tagged Invalid);
                    endmethod: wget
 
                    method Action wset(x);
@@ -543,7 +523,7 @@ module mkUnsafeRWireSBR (RWire#(a))
 
          ifc = (interface RWire;
                    method wget() ;
-                      return (_r.whas ? (tagged Valid (?)) : tagged Invalid);
+                      return (_r.whas ? (tagged Valid (unpack(0))) : tagged Invalid);
                    endmethod: wget
 
                    method Action wset(x);
@@ -642,7 +622,7 @@ module mkUnsafeBypassWire(Wire#(data_t)) provisos (Bits#(data_t, data_t_size));
                    method Action wset(x);
                      _r.wset;
                    endmethod
-                   method wget = ?;
+                   method wget = unpack(0);
                 endinterface);
       end
    else

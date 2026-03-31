@@ -20,6 +20,7 @@ import CSyntax
 import PoisonUtils
 import Type
 import Subst
+import SolvedBinds
 import TIMonad
 import TCMisc
 import TCheck
@@ -71,7 +72,7 @@ tiOneDef :: CDefn -> TI CDefn
 tiOneDef d@(CValueSign (CDef i t s)) = do
         --trace ("TC " ++ ppReadable i) $ return ()
         (rs, ~(CLValueSign d' _)) <- tiExpl nullAssump (i, t, s, [])
-        checkTopPreds d rs
+        checkTopPreds (Just i) d rs
         s <- getSubst'
         clearSubst
         return (CValueSign (apSub s d'))
@@ -90,7 +91,7 @@ tiOneDef d@(Cclass incoh cps ik is fd fs) = do
               fqt' = CQType fps' fty
           (rs, ~(CLValueSign (CDefT _ _ _ fcs') _))
                <- tiExpl nullAssump (fid, fqt', fcs, [])
-          checkTopPreds fid rs
+          checkTopPreds (Just fid) fid rs
           clearSubst
           return (f { cf_default = fcs' })
     fs' <- mapM tiF fs
@@ -112,9 +113,9 @@ getSubst' = do
         if s == s then return s else internalError "TypeCheck.getSubst': s /= s (WTF!?)"
 
 -- Any predicates at the top level should be reported as an error
-checkTopPreds :: (HasPosition a, PPrint a) => a -> [VPred] -> TI ()
-checkTopPreds _ [] = return ()
-checkTopPreds a ps = do
+checkTopPreds :: (HasPosition a, PPrint a) => Maybe Id -> a -> [VPred] -> TI ()
+checkTopPreds _ _ [] = return ()
+checkTopPreds mid a ps = do
     -- reduce the predicates as much as possible
     (ps', ls) <- satisfy [] ps
     if null ps' then
@@ -122,16 +123,19 @@ checkTopPreds a ps = do
         internalError ("checkTopPreds " ++ ppReadable (a, ps))
      else do
         addExplPreds []  -- add en empty context
-        handleContextReduction (getPosition a) ps'
+        handleContextReduction mid (getPosition a) ps'
 
 -- typecheck an expression as a top-level object
 -- returning any unsatisfied preds
 topExpr :: CType -> CExpr -> TI ([VPred], CExpr)
 topExpr td e = do
   (ps, e') <- tiExpr [] td e
-  (ps', ls) <- satisfy [] ps
+  (ps', sbs) <- satisfy [] ps
   s <- getSubst
-  return (apSub s (ps', Cletrec ls e'))
+  let rec_defls    = getRecursiveDefls sbs
+      nonrec_defls = getNonRecursiveDefls sbs
+  -- Generate code: nonrec outside (letseq), rec inside (letrec)
+  return (apSub s (ps', cLetSeq nonrec_defls $ cLetRec rec_defls e'))
 
 ------
 

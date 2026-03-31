@@ -67,6 +67,7 @@ import TypeCheck(topExpr)
 import VModInfo
 import Pragma
 import ISyntax
+import ISyntaxSubst(eSubst, eSubstBatch)
 import IConv(iConvT, iConvExpr)
 import ISyntaxUtil
 import ISyntaxCheck(iGetKind)
@@ -187,6 +188,10 @@ doTraceLoc = elem "-trace-state-loc" progArgs
 doDebugFreeVars :: Bool
 doDebugFreeVars = elem "-debug-eval-free-vars" progArgs
 
+-- Trace batched substitutions in IExpand
+doTraceExpandBatchSubst :: Bool
+doTraceExpandBatchSubst = elem "-trace-expand-batch-subst" progArgs
+
 -- We need to set the buffering of stdout and stderr
 -- if any trace is on (including a trace only used in IExpandUtils)
 -- so make sure that all trace flags are included in this list
@@ -207,6 +212,7 @@ doAnyTrace = doProfile ||
              doTraceIf ||
              doTraceTypes ||
              doTraceLoc ||
+             doTraceExpandBatchSubst ||
              doDebugFreeVars
 
 -- Before we had attributes for controlling whether input clocks have gates,
@@ -247,6 +253,10 @@ iExpand errh flags symt alldefs is_noinlined_func pps def@(IDef mi _ _ _) = do
   let (iks, args, varginfo, ifc) = goutput go
   let rules = go_rules go
   let insts = go_state_vars go
+  let vclockinfo = go_vclockinfo go
+  let vresetinfo = go_vresetinfo go
+
+  chkIfcPortNames errh args ifc vclockinfo vresetinfo
 
   -- turn heap into IDef definitions
   let
@@ -1015,9 +1025,6 @@ iExpandField modId implicitCond clkRst (i, bi, e, t) | isitInout_ t = do
   (iinout, e') <- evalInout e
   let modPos = getPosition modId
   (ws, fi) <- makeIfcInout modPos i (BetterInfo.mi_prefix bi) iinout
-  let mType = fmap (snd . itGetArrows) (BetterInfo.mi_orig_type bi)
-      vname = vf_inout fi
-  maybe (return ()) (saveTopModPortType vname) mType
   setIfcSchedNameScopeProgress Nothing
   return [(IEFace i [] (Just (e',t)) Nothing ws fi)]
 
@@ -1027,8 +1034,12 @@ iExpandField modId implicitCond clkRst (i, bi, e, t) | isRdyId i =
 iExpandField modId implicitCond clkRst (i, bi, e, t) = do
    showTopProgress ("Elaborating method " ++ quote (pfpString i))
    setIfcSchedNameScopeProgress (Just (IEP_Method i False))
+   (_, P p e') <- evalUH e
+   let (ins, eb) = case e' of
+        ICon _ (ICMethod _ ins eb) -> (ins, eb)
+        _ -> internalError ("iExpandField: expected ICMethod: " ++ ppReadable e')
    (its, ((IDef i1 t1 e1 _), ws1, fi1), ((IDef wi wt we _), ws2, fi2))
-       <- iExpandMethod modId 1 [] implicitCond clkRst (i, bi, e)
+       <- iExpandMethod modId 1 [] (pConj implicitCond p) clkRst (i, bi, ins, eb)
    let wp1 = wsToProps ws1 -- default clock domain forced in by iExpandField
    let wp2 = wsToProps ws2
    setIfcSchedNameScopeProgress Nothing
@@ -1037,10 +1048,10 @@ iExpandField modId implicitCond clkRst (i, bi, e, t) = do
 
 -- expand a method
 iExpandMethod :: Id -> Integer -> [Id] -> HPred ->
-                 (HClock, HReset) -> (Id, BetterInfo.BetterInfo, HExpr) ->
+                 (HClock, HReset) -> (Id, BetterInfo.BetterInfo, [String], HExpr) ->
                  G ([(Id, IType)], (HDef, HWireSet, VFieldInfo),
                     (HDef, HWireSet, VFieldInfo))
-iExpandMethod modId n args implicitCond clkRst@(curClk, _) (i, bi, e) = do
+iExpandMethod modId n args implicitCond clkRst@(curClk, _) (i, bi, ins, e) = do
     when doDebug $ traceM ("iExpandMethod " ++ ppString i ++ " " ++ ppReadable e)
     (_, P p e') <- evalUH e
     case e' of
@@ -1050,36 +1061,30 @@ iExpandMethod modId n args implicitCond clkRst@(curClk, _) (i, bi, e) = do
         -- a GenWrap-added context that wasn't satisfied, and GenWrap
         -- should only be adding Bits)
         errG (reportNonSynthTypeInMethod modId i e')
-     ILam li ty eb -> iExpandMethodLam modId n args implicitCond clkRst (i, bi, eb) li ty p
+     ILam li ty eb -> iExpandMethodLam modId n args implicitCond clkRst (i, bi, ins, eb) li ty p
      _ -> iExpandMethod' implicitCond curClk (i, bi, e') p
 
 iExpandMethodLam :: Id -> Integer -> [Id] -> HPred ->
-                 (HClock, HReset) -> (Id, BetterInfo.BetterInfo, HExpr) ->
+                 (HClock, HReset) -> (Id, BetterInfo.BetterInfo, [String], HExpr) ->
                  Id -> IType -> Pred HeapData ->
                  G ([(Id, IType)], (HDef, HWireSet, VFieldInfo),
                     (HDef, HWireSet, VFieldInfo))
-iExpandMethodLam modId n args implicitCond clkRst (i, bi, eb) li ty p = do
+iExpandMethodLam modId n args implicitCond clkRst (i, bi, ins, eb) li ty p = do
+    -- traceM ("iExpandMethodLam " ++ ppString i ++ " " ++ show ins)
+    let i' :: Id
+        i' = mkId (getPosition i) $ mkFString $ head ins
         -- substitute argument with a modvar and replace with body
-        let i_n :: Id
-            i_n = mkIdPost (BetterInfo.mi_prefix bi) (concatFString [fsUnderscore, mkNumFString n])
-            i' :: Id
-            i'  = if null (BetterInfo.mi_args bi) then i_n else (BetterInfo.mi_args bi) !! fromInteger (n-1)
-            eb' :: HExpr
-            eb' = eSubst li (ICon i' (ICMethArg ty)) eb
-            -- bi' = if null bi then [] else tail bi
-        let m_orig_type :: Maybe IType
-            m_orig_type = fmap ((flip (!!) (fromInteger (n-1))) . fst . itGetArrows)
-                          (BetterInfo.mi_orig_type bi)
-        maybe (return ()) (saveTopModPortType (id_to_vName i')) m_orig_type
-        (its, (d, ws1, wf1), (wd, ws2, wf2)) <-
-            iExpandMethod modId (n+1) (i':args) (pConj implicitCond p) clkRst (i, bi, eb')
-        let inps :: [VPort]
-            inps = vf_inputs wf1
-        let wf1' :: VFieldInfo
-            wf1' = case wf1 of
-                     (Method {}) -> wf1 { vf_inputs = ((id_to_vPort i'):inps) }
-                     _ -> internalError "iExpandMethodLam: unexpected wf1"
-        return ((i', ty) : its, (d, ws1, wf1'), (wd, ws2, wf2))
+        eb' :: HExpr
+        eb' = eSubst li (ICon i' (ICMethArg ty)) eb
+    (its, (d, ws1, wf1), (wd, ws2, wf2)) <-
+        iExpandMethod modId (n+1) (i':args) (pConj implicitCond p) clkRst (i, bi, tail ins, eb')
+    let inps :: [VPort]
+        inps = vf_inputs wf1
+    let wf1' :: VFieldInfo
+        wf1' = case wf1 of
+                  (Method {}) -> wf1 { vf_inputs = ((id_to_vPort i'):inps) }
+                  _ -> internalError "iExpandMethodLam: unexpected wf1"
+    return ((i', ty) : its, (d, ws1, wf1'), (wd, ws2, wf2))
 
 iExpandMethod' :: HPred -> HClock -> (Id, BetterInfo.BetterInfo, HExpr) ->
                   Pred HeapData ->
@@ -1148,14 +1153,6 @@ iExpandMethod' implicitCond curClk (i, bi, e0) p0 = do
             outputPort = toMaybe (isValueType  methType) (BetterInfo.mi_result bi)
         let rdyPort :: VPort
             rdyPort    = BetterInfo.mi_ready bi
-
-        let mType :: Maybe IType
-            mType = fmap (snd . itGetArrows) (BetterInfo.mi_orig_type bi)
-        maybe (return ()) (\t -> do
-          maybe (return ()) (\(n,_) -> do
-            if (isActionType methType) then
-              maybe (return ()) (saveTopModPortType n) (getAVType t)
-             else saveTopModPortType n t) outputPort) mType
 
         -- split wire sets for more accurate tracking
         return ([],
@@ -2122,6 +2119,24 @@ evalString e = do
             _ -> do e'' <- unheapAll e'
                     errG (getIExprPosition e'', EStringNF (ppString e''))
 
+evalStringList :: HExpr -> G ([String], Position)
+evalStringList e = do
+  e' <- evaleUH e
+  case e' of
+    IAps (ICon i _) _ [a] ->
+      if i == idCons noPosition then do
+        a' <- evaleUH a
+        case a' of
+          IAps (ICon _ (ICTuple {})) _ [e_h, e_t] -> do
+            (h, _) <- evalString e_h
+            (t, _) <- evalStringList e_t
+            return (h:t, getIExprPosition e')
+          _ -> internalError ("evalStringList Cons: " ++ showTypeless a')
+      -- We get primChr for Nil, since it's a no-argument constructor
+      else if i == idPrimChr then return ([], getIExprPosition e')
+      else internalError ("evalStringList con: " ++ show i)
+    _ -> nfError "evalStringList" e'
+
 -----------------------------------------------------------------------------
 
 evalHandle :: HExpr -> G Handle
@@ -2849,6 +2864,36 @@ mkApUH :: HExpr -> [Arg] -> G HExpr
 mkApUH f es = do es' <- mapM evalArgUH es
                  return (mkAp f es')
 
+-- Accumulate substitutions when applying to a chain of ILam/ILAM
+-- This batches substitutions to avoid repeated hyper calls
+--
+evalApAccum :: String -> M.Map Id HExpr -> M.Map Id IType -> HExpr -> [Arg] -> G PExpr
+
+-- Continue accumulating for ILam with expression argument
+evalApAccum tag exprCtx typeCtx (ILam i t body) (E a : as) = do
+  a' <- toHeap "apply-accum" a (Just i)
+  -- position information is clobbered by this point
+  when doDebug $ traceM ("accum apply arg=" ++ ppReadable (a', a))
+  evalApAccum "ILam-accum" (M.insert i a' exprCtx) typeCtx body as
+
+-- Continue accumulating for ILAM with type argument
+evalApAccum tag exprCtx typeCtx e@(ILAM i k body) (T t : as) = do
+  -- Simplify numeric types involving SizeOf before adding to typeCtx
+  t' <- if isUnSimpNumT t then simpNumT (getIExprPosition e) t else return t
+  evalApAccum "ILAM-accum" exprCtx (M.insert i t' typeCtx) body as
+
+-- Hit something else: apply accumulated substitutions if any, then continue
+evalApAccum tag exprCtx typeCtx e args = do
+  when (doDebug || doTraceExpandBatchSubst) $
+    traceM ("applying batched subst: " ++
+             show (M.size exprCtx) ++ " exprs, " ++
+             show (M.size typeCtx) ++ " types")
+  -- eSubstBatch will do no work if exprCtx and typeCtx are empty
+  -- (but in evalAppAccum, at least one of them won't be)
+  let e' = eSubstBatch exprCtx typeCtx e
+  -- evalAp will handle if substitution revealed more ILam/ILAM
+  evalAp tag e' args
+
 -- Evaluate a function applied to some number (possibly 0) of arguments
 -- (types and expressions)
 -- calls evalAp' to do the actual work, and corrects the cross-ref info
@@ -2872,19 +2917,26 @@ evalAp str e es = do
       traceM ("evalAp exit  " ++ str' ++ " ]:\n"++ ppReadable (mkAp e es, r))
   return r
 
+isUnSimpNumT :: IType -> Bool
+isUnSimpNumT (ITNum _) = False
+isUnSimpNumT t = iGetKind t == Just IKNum
+
+simpNumT :: Position -> IType -> G IType
+simpNumT pos t = do
+    flags <- getFlags
+    symt <- getSymTab
+    case iConvT flags symt (iToCT t) of
+      t'@(ITNum _) -> return t'
+      _ -> errG (pos, EValueOf (ppString t))
+
 -- evaluate a function application
 -- [arg] is a stack of application arguments on the left spine of the expression
 evalAp' :: HExpr -> [Arg] -> G PExpr
 
 -- simplify numeric types involving SizeOf
-evalAp' e (T t : as) | not $ simpT t = do
-    flags <- getFlags
-    symt <- getSymTab
-    case iConvT flags symt (iToCT t) of
-      t'@(ITNum _) -> evalAp "simpNumT" e (T t' : as)
-      _ -> errG (getIExprPosition e, EValueOf (ppString t))
-  where simpT (ITNum _) = True
-        simpT t = iGetKind t /= Just IKNum
+evalAp' e (T t : as) | isUnSimpNumT t = do
+  t' <- simpNumT (getIExprPosition e) t
+  evalAp "simpNumT" e (T t' : as)
 
 evalAp' f@(ICon i (ICDef t e)) as = do
         -- recurse into evaluating e
@@ -2905,14 +2957,15 @@ evalAp'   (ILam i t e)   (E a:as) = do
         a' <- toHeap "apply" a (Just i)
         -- position information is clobbered by this point
         when doDebug $ traceM ("apply arg=" ++ ppReadable (a', a))
-        let e' = eSubst i a' e
-        evalAp "ILam" e' as
+        evalApAccum "ILam" (M.singleton i a') M.empty e as
 evalAp'   f@(ILam _ _ _) (T t:as) = internalError("evalAp' ILam: " ++ ppReadable (f,t))
 
 -- it's WHNF
 evalAp' e@(ILAM _ _ _)         [] = return (pExpr e)
 -- substitute type
-evalAp'   (ILAM i k e)   (T t:as) = evalAp "ILAM" (etSubst i t e) as
+-- We can put t directly into typeCtx because the simpNumT case of evalAp' took care of
+-- simplifying any unsimplified numeric types
+evalAp'   (ILAM i k e)   (T t:as) = evalApAccum "ILAM" M.empty (M.singleton i t) e as
 evalAp'   f@(ILAM _ _ _) (E e:as) = internalError ("evalAp' ILAM:" ++ ppReadable (f,e))
 -- place applications args on the stack and evaluate function
 evalAp' e@(IAps f tys es)      as =
@@ -3072,6 +3125,11 @@ conAp' i (ICPrim _ PrimIsRawUndefined) _ (T t : E e : as) = do
                                return (P p iTrue)
     _ -> -- do traceM ("IsRawUndefined: False")
             return (P p iFalse)
+
+conAp' i (ICPrim _ PrimMethod) _ [T t, E eInNames, E meth] = do
+  (inNames, _) <- evalStringList eInNames
+  P p meth' <- eval1 meth
+  return $ P p $ ICon (dummyId noPosition) $ ICMethod {iConType = t, iInputNames = inNames, iMethod = meth'}
 
 -- XXX is this still needed?
 conAp' i (ICUndet { iConType = t })  e as | t == itClock =
@@ -4070,7 +4128,7 @@ getBuriedPreds (IAps a@(ICon _ (ICPrim _ PrimBOr)) b [e1, e2]) = do
 -- the following are followed because they are strict,
 -- and we want to unheap the references in their arguments
 getBuriedPreds (IAps a@(ICon _ p@(ICPrim _ _)) b es) = do
-  --traceM("getBuriedPreds: prim")
+  -- traceM("getBuriedPreds: prim")
   ps <- mapM getBuriedPreds es
   return (foldr1 pConj ps)
 getBuriedPreds (IAps a@(ICon _ (ICForeign { })) b es) = do
@@ -5168,7 +5226,7 @@ reportNonSynthTypeInMethod modId methId methExpr =
             let str = "The interface method " ++ quote (pfpString methId) ++
                       " uses type " ++ quote (pfpString v) ++
                       " which is not in the Bits class."
-            in  (modPos, EBadIfcType modName str)
+            in  (modPos, EBadIfcType (Just modName) str)
     in  case (getNonSynthTypes methExpr) of
             [] -> -- this shouldn't happen
                   (modPos, EPolyField)
@@ -5188,7 +5246,7 @@ reportNonSynthTypeInModuleArg modId modExpr =
             let str = "A parameter of the module uses the type " ++
                       quote (pfpString v) ++
                       " which is not in the Bits class."
-            in  (modPos, EBadIfcType modName str)
+            in  (modPos, EBadIfcType (Just modName) str)
     in  case (getNonSynthTypes modExpr) of
             [] -> internalError
                     ("IExpand: unexplained module with type parameter: " ++

@@ -14,8 +14,8 @@ import Prelude hiding ((<>))
 #endif
 
 import Data.List(union, genericSplitAt, genericLength)
-import Eval
-import ErrorUtil(internalError)
+import Eval(NFData(..), rnf2, rnf3, rnf7)
+import Error(ErrMsg(..), internalError, bsErrorReallyUnsafe)
 import Position
 import Id
 import IdPrint
@@ -54,8 +54,8 @@ instance Types t => Types (Qual t) where
     apSub s (ps :=> t) = apSub s ps :=> apSub s t
     tv      (ps :=> t) = tv ps `union` tv t
 
-instance (Hyper a) => Hyper (Qual a) where
-    hyper (ps :=> t) y = hyper2 ps t y
+instance (NFData a) => NFData (Qual a) where
+    rnf (ps :=> t) = rnf2 ps t
 
 qualTypeToCQType :: Qual Type -> CQType
 qualTypeToCQType (pwps :=> t) = CQType ps t
@@ -105,8 +105,8 @@ instance Types PredWithPositions where
     apSub s (PredWithPositions p poss) = PredWithPositions (apSub s p) poss
     tv      (PredWithPositions p poss) = tv p
 
-instance Hyper PredWithPositions where
-    hyper (PredWithPositions p poss) y = hyper2 p poss y
+instance NFData PredWithPositions where
+    rnf (PredWithPositions p poss) = rnf2 p poss
 
 -----
 
@@ -124,8 +124,8 @@ instance Types Pred where
     apSub s (IsIn c ts) = IsIn c $ expandSyn <$> apSub s ts
     tv      (IsIn c ts) = tv ts
 
-instance Hyper Pred where
-    hyper (IsIn c ts) y = hyper2 c ts y
+instance NFData Pred where
+    rnf (IsIn c ts) = rnf2 c ts
 
 predToCPred :: Pred -> CPred
 predToCPred (IsIn c ts) = CPred (name c) ts
@@ -194,8 +194,8 @@ instance PVPrint Class where
                 pvPrint d 0 (funDeps c) <>
                 text ")"
 
-instance Hyper Class where
-    hyper (Class x1 x2 x3 x4 x5 x6 x7 x8 x9) y = hyper7 x1 x2 x3 x4 x5 x8 x9 y
+instance NFData Class where
+    rnf (Class x1 x2 x3 x4 x5 x6 x7 x8 x9) = rnf7 x1 x2 x3 x4 x5 x8 x9
 
 instance Eq Class where
     c == c'  =  name c == name c'
@@ -208,8 +208,8 @@ instance Ord Class where
 -- things are that go into an Inst.
 data Inst = Inst CExpr [TyVar] (Qual Pred)
 
-instance Hyper Inst where
-    hyper (Inst x1 x2 x3) y = hyper3 x1 x2 x3 y
+instance NFData Inst where
+    rnf (Inst x1 x2 x3) = rnf3 x1 x2 x3
 
 mkInst :: CExpr -> Qual Pred -> Inst
 mkInst e i = Inst e (tv i) i
@@ -233,32 +233,32 @@ instance PVPrint Inst where
 -----------------------------------------------------------------------------
 
 expandSyn :: Type -> Type
-expandSyn t0 = exp [] t0 []
-  where exp syns (TAp f a) as = exp syns f (exp syns a [] : as)
-        exp syns tt@(TCon (TyCon i _ (TItype n t))) as | i `elem` syns =
-          internalError ("recursive type synonyms: " ++ ppReadable syns)
-        exp syns tt@(TCon (TyCon i _ (TItype n t))) as =
-            case genericSplitAt n as of
-            (as1, as2) -> if genericLength as1 < n then
-                              -- We have expanded a synonym that was not fully applied.
-                              -- It is all right if `type S v1 ... vn = t vn' and vn doesn't
-                              -- occur in t.
-                              exp syns' (inst as1 (truncType (n - genericLength as1) (fromInteger n-1) t')) as2
-                          else
-                              exp syns' (inst as1 t') as2
-          where syns' = i:syns
-                t' = setTypePosition (getIdPosition i) t
-        exp syns tt@(TCon (TyCon i _ _)) as | isTFun i = apTFun tt i as
-        exp syns t as = foldl TAp t as
-
-        truncType 0 _ t = t
-        truncType k n (TAp t (TGen _ n')) | n == n' && notIn n t = truncType (k-1) (n-1) t
-          where notIn _ (TVar _) = True
-                notIn _ (TCon _) = True
-                notIn v (TAp t1 t2) = notIn v t1 && notIn v t2
-                notIn v (TGen _ n) = v /= n
-                notIn v (TDefMonad _) = internalError "expandSyn,truncType (TDefMonad)"
-        truncType k n t = internalError ("expandSyn,truncType\n" ++ ppReadable (k, n, t0, t))
+expandSyn t0 = exp [] f as
+  where (f, as) = splitTAp t0
+        -- All type applications should be split before entering exp
+        exp _ f@(TAp _ _) as = internalError $ "expandSyn.exp Unexpected TAp: " ++ ppReadable (f, as)
+        exp syns (TCon (TyCon i _ (TItype n t))) as
+          -- This probably never happens because recursive type synonyms are caught
+          -- when making the symbol table, but it is better to produce a proper error
+          -- if something sneaks through.
+          | i `elem` syns = bsErrorReallyUnsafe [(getPosition syns, ETypeSynRecursive (map pfpString syns))]
+          -- We are implementing LiberalTypeSynonyms, which means expanding type synonyms
+          -- like macros as far as possible before doing any consistency checks.
+          -- However, expandSyn is only called in contexts (user source code, arguments
+          -- to non-synonym type applications) where a concrete type is expected
+          -- post-expansion. If we have a partially applied type synonym in such a
+          -- context (which includes the eventual return from exp), it is an error.
+          | let numArgs = genericLength as,
+            numArgs < n = bsErrorReallyUnsafe [(getPosition i, EPartialTypeApp (pfpString i) n numArgs)]
+          -- We have a synonym we can expand, so do so.
+          | otherwise = let (as1, as2) = genericSplitAt n as
+                            t' = setTypePosition (getIdPosition i) t
+                            (f', as') = splitTAp $ inst as1 t'
+                        in exp (i:syns) f' (as' ++ as2)
+        exp _ f@(TCon (TyCon i _ _)) as
+          | isTFun i = apTFun f i $ map expandSyn as
+        -- f does not contain a TAp or a synonym TCon, so it cannot have synonyms to expand
+        exp _ f as = foldl TAp f $ map expandSyn as
 
 isTFun :: Id -> Bool
 isTFun i = i `elem` numOpNames ++ strOpNames

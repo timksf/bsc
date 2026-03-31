@@ -218,12 +218,14 @@ idConc = prelude_id_no fsConc
 idConcPrim = prelude_id_no fsConcPrim
 idConcPoly = prelude_id_no fsConcPoly
 idMeta = prelude_id_no fsMeta
-idMetaData, idStarArg, idNumArg, idStrArg, idConArg, idMetaConsNamed, idMetaConsAnon, idMetaField :: Id
+idMetaData, idStarArg, idNumArg, idStrArg, idStarConArg, idNumConArg, idOtherConArg, idMetaConsNamed, idMetaConsAnon, idMetaField :: Id
 idMetaData = prelude_id_no fsMetaData
 idStarArg = prelude_id_no fsStarArg
 idNumArg = prelude_id_no fsNumArg
 idStrArg = prelude_id_no fsStrArg
-idConArg = prelude_id_no fsConArg
+idStarConArg = prelude_id_no fsStarConArg
+idNumConArg = prelude_id_no fsNumConArg
+idOtherConArg = prelude_id_no fsOtherConArg
 idMetaConsNamed = prelude_id_no fsMetaConsNamed
 idMetaConsAnon = prelude_id_no fsMetaConsAnon
 idMetaField = prelude_id_no fsMetaField
@@ -233,6 +235,12 @@ idPolyWrapField = mk_no fsPolyWrapField
 -- | Used by GenWrap for "polymorphic" modules
 idLiftModule :: Id
 idLiftModule = prelude_id_no fsLiftModule
+
+idWrapField, idFromWrapField, idToWrapField, idSaveFieldPortTypes :: Id
+idWrapField = prelude_id_no fsWrapField
+idFromWrapField = prelude_id_no fsFromWrapField
+idToWrapField = prelude_id_no fsToWrapField
+idSaveFieldPortTypes = prelude_id_no fsSaveFieldPortTypes
 
 -- Used by desugaring
 id_lam, id_if, id_read, id_write :: Position -> Id
@@ -301,14 +309,13 @@ idSJump pos   = mkId pos fsSJump
 idSNamed pos  = mkId pos fsSNamed
 idS    pos    = mkId pos fsS
 idStmt pos    = mkId pos fsStmt
-idSBreak, idSContinue, idSReturn, idCons, idConcat :: Position -> Id
+idSBreak, idSContinue, idSReturn, idCons :: Position -> Id
 idSBreak pos  = mkId pos fsSBreak
 idSContinue pos = mkId pos fsSContinue
 idSReturn   pos = mkId pos fsSReturn
-idCons pos    = mkId pos fsCons
-idConcat pos  = mkId pos fsConcat
+idCons pos    = prelude_id pos fsCons
 idNil, idNothing, idSprime :: Position -> Id
-idNil     pos = mkId pos fsNil
+idNil     pos = prelude_id pos fsNil
 idNothing pos = mkId pos fsNothing
 idSprime  pos = mkId pos fsSprime
 
@@ -503,9 +510,8 @@ idPrimAdd = prelude_id_no fsPrimAdd
 idPrimSub = prelude_id_no fsPrimSub
 
 -- | Used by AddCFWire
-idVRWireN, idVmkRWire1, idWGet, idWSet, idWHas :: Id
-idVRWireN   = prelude_bsv_id_no fsVRWireN
-idVmkRWire1 = prelude_bsv_id_no fsVmkRWire1
+id__mkRWireSubmodule, idWGet, idWSet, idWHas :: Id
+id__mkRWireSubmodule = prelude_bsv_id_no fs__mkRWireSubmodule
 idWGet = prelude_bsv_id_no fsWGet
 idWSet = prelude_bsv_id_no fsWSet
 idWHas = prelude_bsv_id_no fsWHas

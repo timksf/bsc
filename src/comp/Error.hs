@@ -25,6 +25,8 @@ module Error(
              bsMessage,
              -- version when not in the IO monad
              bsErrorUnsafe,
+             -- version only for expandSyn (which doesn't have an ErrorHandle)
+             bsErrorReallyUnsafe,
              -- versions that display a context following the message
              MsgContext, emptyContext,
              bsWarningsAndErrorsWithContext,
@@ -324,6 +326,15 @@ bsMessage ref ms = do
 bsErrorUnsafe :: ErrorHandle -> [EMsg] -> a
 bsErrorUnsafe ref es = unsafePerformIO (bsError ref es)
 
+-- This is very bad because it ignores everything in the real error state.
+-- It only exists to generate proper errors from expandSyn since propagating
+-- the error handle through things like typeclass signatures is unreasonable.
+-- As an alternative, the compiler could use a global error handle (like
+-- bluetcl does), but that is a more invasive change.
+bsErrorReallyUnsafe :: [EMsg] -> a
+bsErrorReallyUnsafe es = unsafePerformIO $ do
+  ref <- initErrorHandle
+  bsError ref es
 
 suppressWarnings :: ErrorState -> [WMsg] -> (ErrorState, [WMsg])
 suppressWarnings state ws =
@@ -709,8 +720,8 @@ data ErrMsg =
             String -- ^ var name
             Position -- ^ previous decl position
 
-        | EForeignNotBit String
-        | EPartialTypeApp String
+        | EForeignNotBit String String
+        | EPartialTypeApp String Integer Integer -- synonym (# expected) (# given)
         | ENotStructId String
         | ENotStructUpd String
         | ENotStruct String String
@@ -781,7 +792,7 @@ data ErrMsg =
         | WIncoherentMatch String String
         | WOrphanInst String
         | EModInstWrongArgs [Position]
-        | EAmbiguous [(String, Position, [Doc])]
+        | EAmbiguous [(String, Position, [(String, [Position])])]
         | EAmbiguousExplCtx [Doc] [Doc] Doc
         | EWrongArity
         | EUnknownSize
@@ -794,7 +805,7 @@ data ErrMsg =
         | EPolyField
         | ENotKNum String
         | EBadGenArg String
-        | EBadIfcType String String
+        | EBadIfcType (Maybe String) String
         | EBadForeignIfcType String
         | ENoTypeSign String
         | EStmtContext String
@@ -1921,10 +1932,14 @@ getErrorText (EMultipleDecl name prevPos) =
     (Type 11, empty, s2par ("Declaration of " ++ ishow name ++
                             " conflicts with previous declaration at " ++
                             prPosition prevPos))
-getErrorText (EForeignNotBit i) =
-    (Type 12, empty, s2par ("Foreign function has non-Bit argument/result: " ++ ishow i))
-getErrorText (EPartialTypeApp i) =
-    (Type 13, empty, s2par ("Partially applied type synonym " ++ ishow i))
+getErrorText (EForeignNotBit i t) =
+  (Type 12, empty, hdr $$ text "Type:" <+> nest 2 (text t))
+  where hdr = s2par ("Foreign function " ++ ishow i ++ " has a non-Bit argument or result.")
+getErrorText (EPartialTypeApp i expected given) =
+    (Type 13, empty,
+     s2par ("Partially applied type synonym: " ++ ishow i) $$
+     s2par ("The synonym expects " ++ show expected ++
+            " arguments but was used with " ++ show given ++ " arguments."))
 getErrorText (ENotStructId c) =
     (Type 14, empty, s2par ("Identifier is not a struct name " ++ ishow c))
 getErrorText (ENotStructUpd e) =
@@ -2069,12 +2084,16 @@ getErrorText (EContextReductionReduces context reduced_contexts positions vps) =
 
 getErrorText (EAmbiguous ambiguous_var_infos) =
     (Type 33, empty,
-     let mkVarMsg (var, var_pos, use_expls) =
+     let infos = map (\(a,b,c) -> (b,c)) ambiguous_var_infos
+         mkExplMsg (str, poss) =
+           s2par (str ++ " in or at the following locations:") $$
+           nest 2 (vcat (map (text . prPosition) poss))
+         mkVarMsg (var_pos, use_expls) =
              s2par ("An ambiguous type was introduced at " ++
                     prPosition var_pos) $$
              s2par ("This type resulted from:") $$
-             nest 2 (vcat use_expls)
-         msgs = map mkVarMsg ambiguous_var_infos
+             nest 2 (vcat (map mkExplMsg use_expls))
+         msgs = map mkVarMsg (nub infos)
      in
          s2par ("There is not enough explicit type information to deduce " ++
                 "the types of all expressions.  Consider adding more type " ++
@@ -2083,7 +2102,7 @@ getErrorText (EAmbiguous ambiguous_var_infos) =
          -- there can be duplicate messages when multiple variables are
          -- introduced at the same place, so use "nub" on the message
          -- (not on the variable list)
-         nest 2 (vcat (nub msgs))
+         nest 2 (vcat msgs)
     )
 getErrorText (EWrongArity) =
     (Type 34, empty, s2par "Clause has wrong number of arguments")
@@ -2105,9 +2124,12 @@ getErrorText (ENotKNum t) =
     (Type 41, empty, s2par ("Only size polymorphism allowed in code generation: " ++ t))
 getErrorText (EBadGenArg i) =
     (Type 42, empty, s2par ("Bad argument in code generation: " ++ ishow i))
-getErrorText (EBadIfcType mod msg) =
+getErrorText (EBadIfcType (Just mod) msg) =
     (Type 43, empty,
      s2par ("Cannot synthesize " ++ quote mod ++ ": " ++ msg))
+getErrorText (EBadIfcType Nothing msg) =
+    (Type 43, empty,
+     s2par ("Cannot synthesize this module or function: " ++ msg))
 getErrorText (ENoTypeSign e) =
     (Type 44, empty, s2par ("Missing or bad type signature for a module: " ++ e))
 getErrorText (EStmtContext c) =
